@@ -1,24 +1,21 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-const NGROK_BACKEND_URL = 'https://nonflyable-debrah-feathered.ngrok-free.dev';
+const PRODUCTION_BACKEND = 'https://chefasap-backend.onrender.com';
 
 const getBackendIP = () => {
-  // Use ngrok tunnel — works for anyone anywhere
-  if (NGROK_BACKEND_URL) return NGROK_BACKEND_URL;
+  // Production or tunnel mode — use Render
+  if (!__DEV__) return PRODUCTION_BACKEND;
 
-  // Local dev fallback (same WiFi only)
-  const debuggerHost = Constants.expoConfig?.hostUri ||
-                       Constants.manifest2?.extra?.expoGo?.debuggerHost ||
-                       Constants.manifest?.debuggerHost;
+  // Dev mode — use Render too so it works for everyone
+  // Switch to local IP below only if you need to test local backend changes
+  return PRODUCTION_BACKEND;
 
-  if (debuggerHost) {
-    const host = debuggerHost.split(':')[0];
-    return `http://${host}:3000`;
-  }
-
-  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
-  return 'http://localhost:3000';
+  // ── Local dev fallback (uncomment if testing local backend) ──
+  // const debuggerHost = Constants.expoConfig?.hostUri;
+  // if (debuggerHost) return `http://${debuggerHost.split(':')[0]}:3000`;
+  // if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
+  // return 'http://localhost:3000';
 };
 
 const getEnvVars = () => ({
