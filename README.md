@@ -1,94 +1,126 @@
-# CS491-ChefAsap Installation Instructions:
+# CS491-ChefAsap Installation Instructions
 
-On VSCode terminal, Copy/Paste this command: "git clone https://github.com/michaelmarut/CS491-ChefAsap.git"
+On VSCode terminal, Copy/Paste this command:
+```
+git clone https://github.com/rudrapatel28/CS491-ChefAsap.git
+```
 
-## Downloads Required:
+## Downloads Required
 
-Download an app called "Expo Go" in order to view on mobile. 
+- Download **[Expo Go](https://expo.dev/client)** on your iOS or Android device to view the app on mobile
+- Install **[Python](https://www.python.org/downloads/)** (verify with `python --version`)
+- Install **[Node.js](https://nodejs.org/)** (verify with `node -v` and `npm -v`)
 
-Install [Python](https://www.python.org/downloads/) (You should have Python already but just in case...)
+> MySQL Workbench is no longer required. The backend now uses Render Cloud PostgreSQL.
 
-To verify installation, type "python --version" in VSCode terminal
+---
 
-Install [Node.js](https://nodejs.org/)
+## Frontend
 
-To verify installation, type "node -v" and then "npm -v" in VSCode terminal
+**Step 1:** Make sure you are in the `frontend` directory
 
-Install [MySQL Workbench](https://www.mysql.com/products/workbench/)
+**Step 2:** Run:
+```
+npm install
+```
 
-If stuck, watch this [video](https://www.youtube.com/watch?v=u96rVINbAUI) for step by step installation for MySQL Workbench
+**Step 3:** Run one of the following:
+```
+npx expo start          # Local network (same WiFi only)
+npx expo start --tunnel # Public access (anyone anywhere can scan QR)
+```
 
-IMPORTANT: Once installed, make sure your Local instance password is "your_password". Otherwise MySQL will NOT work with Flask backend
+> Use `--tunnel` if you want to share the app with people outside your local network.
 
+---
 
-## FrontEnd:
+## Backend
 
-**Step 1:** Make SURE you are in the frontend file directory. The following steps must be done in the frontend file terminal to work
+The backend is deployed to **Render Cloud** and runs 24/7 at:
+```
+https://chefasap-backend.onrender.com
+```
 
-**Step 2:** Run: "npm install"
+The frontend automatically connects to this URL — **no local backend setup is required** to run the app.
 
-**Step 3:** Run: "npx expo start -w" to view frontend on PC. 
+### Running the Backend Locally (Optional — for backend development only)
 
-(To view in mobile, look at "Launching the App" section)
+If you need to make and test backend changes locally:
 
-## BackEnd:
+**Step 1:** Make sure you are in the `backend` directory
 
-**Database Options:** The backend supports both **Render Cloud PostgreSQL** (recommended for team collaboration) and **Local MySQL**.
+**Step 2:** Create and activate a virtual environment:
+```
+python -m venv venv
+venv\Scripts\activate      # Windows
+source venv/bin/activate   # Mac/Linux
+```
 
-### Option A: Render Cloud PostgreSQL (Recommended)
-
-**Step 1:** Make SURE you are in the backend file directory
-
-**Step 2:** Run: `python -m venv venv` (if not already created)
-
-**Step 3:** Run: `pip install -r requirements.txt`
+**Step 3:** Install dependencies:
+```
+pip install -r requirements.txt
+```
 
 **Step 4:** Set environment variable:
-- **Windows PowerShell**: `$env:DB_TYPE="postgresql"`
-- **Windows CMD**: `set DB_TYPE=postgresql`
-- **Mac/Linux**: `export DB_TYPE=postgresql`
+- **Windows PowerShell:** `$env:DB_TYPE="postgresql"`
+- **Windows CMD:** `set DB_TYPE=postgresql`
+- **Mac/Linux:** `export DB_TYPE=postgresql`
 
-**Step 5:** Run: `python app.py`
+**Step 5:** Run:
+```
+python app.py
+```
 
-**OR simply double-click**: `start_cloud.bat` (Windows)
+> If testing with a local backend, update `frontend/config.js` to point to your local IP instead of the Render URL.
 
-### Option B: Local MySQL
-
-**Step 1:** Make SURE you are in the backend file directory
-
-**Step 2:** Open up your Local Instance in MySQL Workbench
-
-**Step 3:** Run: `python -m venv venv` (if not already created)
-
-**Step 4:** Run: `pip install -r requirements.txt`
-
-**Step 5:** Set environment variable (or leave default):
-- **Windows PowerShell**: `$env:DB_TYPE="mysql"`
-- **Or don't set it** (MySQL is default)
-
-**Step 6:** Run: `python app.py`
-
-**OR simply double-click**: `start_local.bat` (Windows)
-
-**See `backend/README_SETUP.md` for detailed setup instructions.**
+---
 
 ## Launching the App on Mobile
 
-If you want to view the app on mobile, download Expo Go in the app store. When you type in "npx expo start", a QR code will show up in the terminal. Scan that, and it will be displayed on your phone
+1. Download **Expo Go** from the [App Store (iOS)](https://apps.apple.com/app/expo-go/id982107779) or [Google Play (Android)](https://play.google.com/store/apps/details?id=host.exp.exponent)
+2. In the `frontend` directory, run `npx expo start --tunnel`
+3. Scan the QR code that appears in the terminal
+4. The app will load on your device via Expo Go
+
+> Both iOS and Android are supported.
+
+---
 
 ## Quick Setup Reference
 
-Once you finished all the installation steps, here is a very basic rundown to launch the app:
+### To run the app (frontend only — backend is already live on Render):
 
-### Using Render Cloud (Recommended):
-1. In backend terminal: `set DB_TYPE=postgresql` (or double-click `start_cloud.bat`)
-2. In backend terminal: `python app.py`
-3. In frontend terminal: `npx expo start`
+```
+1. cd frontend
+2. npm install
+3. npx expo start --tunnel
+4. Scan QR code with Expo Go
+```
 
-### Using Local MySQL:
-1. Launch MySQL Workbench Local instance
-2. In backend terminal: `python app.py` (or double-click `start_local.bat`)
-3. In frontend terminal: `npx expo start`
+That's it! No local backend needed.
 
-That's it!
+---
 
+## Architecture Overview
+
+```
+Mobile Device (Expo Go)
+        ↓  scans QR
+Expo Tunnel (public URL)
+        ↓
+Your PC (Metro Bundler — frontend only)
+        ↓  API calls
+Render Web Service (Flask — always online)
+        ↓
+Render PostgreSQL (Database — always online)
+```
+
+---
+
+## Notes for Developers
+
+- **Backend auto-deploys** on every push to `main` via Render
+- **Frontend updates** are live immediately when Expo reloads
+- The `frontend/config.js` file controls which backend URL is used
+- Do not commit `.env` files — use Render's environment variable dashboard for secrets
+- See `backend/README_SETUP.md` for detailed backend setup instructions
