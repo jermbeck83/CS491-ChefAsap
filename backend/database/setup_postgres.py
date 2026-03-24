@@ -900,7 +900,19 @@ def init_postgres_db():
             FOR EACH ROW
             EXECUTE FUNCTION update_chef_menu_updated_at();
         ''')
-
+        # Create menu_categories table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS menu_categories (
+                id SERIAL PRIMARY KEY,
+                chef_id INTEGER NOT NULL REFERENCES chefs(id) ON DELETE CASCADE,
+                category_name VARCHAR(100) NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(chef_id, category_name)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_menu_categories_chef_id ON menu_categories(chef_id)')
         # Orders table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
