@@ -10,11 +10,15 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.osid54.ChefAsap",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ChefAsap needs access to your location to find nearby chefs.",
+        "NSLocationAlwaysUsageDescription": "ChefAsap needs access to your location to find nearby chefs.",
+        "NSCameraUsageDescription": "ChefAsap needs camera access to upload food photos.",
+        "NSPhotoLibraryUsageDescription": "ChefAsap needs photo library access to select food photos.",
+        "NSPhotoLibraryAddUsageDescription": "ChefAsap needs permission to save photos to your library.",
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "bundleIdentifier": "com.osid54.ChefAsap"
+      }
     },
     "android": {
       "edgeToEdgeEnabled": true,
@@ -33,14 +37,13 @@
       "expo-font",
       "expo-web-browser",
       "expo-secure-store",
-      "react-native-edge-to-edge",
       [
         "expo-splash-screen",
         {
           "backgroundColor": "#d9f99d",
           "image": "./app/assets/images/splash-icon.png",
           "dark": {
-            "image": "./app//assets/images/splash-icon.png",
+            "image": "./app/assets/images/splash-icon.png",
             "backgroundColor": "#36401F"
           },
           "imageWidth": 200

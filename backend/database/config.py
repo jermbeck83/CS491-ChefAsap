@@ -7,11 +7,11 @@ import os
 
 # PostgreSQL configuration (Render Cloud)
 db_config = {
-    'host': os.getenv('RENDER_DB_HOST', 'dpg-d3s29ihr0fns73e69pp0-a.oregon-postgres.render.com'),
+    'host': os.getenv('RENDER_DB_HOST', 'dpg-d6muqvngi27c73c4ilq0-a.oregon-postgres.render.com'),
     'port': int(os.getenv('RENDER_DB_PORT', '5432')),
-    'user': os.getenv('RENDER_DB_USER', 'chefasap_user'),
-    'password': os.getenv('RENDER_DB_PASSWORD', '5YVNDyhzIl93LOvG7RyPfaAVx46LdFW2'),
-    'database': os.getenv('RENDER_DB_NAME', 'chefasap')
+    'user': os.getenv('RENDER_DB_USER', 'chefasap_db_user'),
+    'password': os.getenv('RENDER_DB_PASSWORD', 't2px3lrdYt7rbmrmPTN2zKayGAResK8i'),
+    'database': os.getenv('RENDER_DB_NAME', 'chefasap_db')
 }
 
 # SSL mode for Render (use connection string instead)

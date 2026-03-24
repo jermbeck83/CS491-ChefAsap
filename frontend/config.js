@@ -1,48 +1,28 @@
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// was causing 'ERROR  Connection error: Network request failed' on my computer
-/*
-const getApiUrl = () => {
-  // 🔧 临时修复：直接使用后端 IP
-  // 后端运行在: 192.168.1.181:3000
-  const backendIP = 'http://192.168.1.181:3000';
-  
-  const hostUri = Constants.expoConfig?.hostUri;
+const NGROK_BACKEND_URL = 'https://nonflyable-debrah-feathered.ngrok-free.dev';
 
-  if (hostUri) {
-    // If running in Expo Go or a dev build
-    const ipAddress = hostUri.split(':')[0];
-    const url = `http://${ipAddress}:3000`;
-    console.log('Auto-detected URL:', url);
-    console.log('Backend IP:', backendIP);
-    
-    // 使用后端 IP（因为自动检测可能不准确）
-    return backendIP;
-  } else {
-    // Fallback for web or other environments
-    console.log('Using backend IP:', backendIP);
-    return backendIP;
+const getBackendIP = () => {
+  // Use ngrok tunnel — works for anyone anywhere
+  if (NGROK_BACKEND_URL) return NGROK_BACKEND_URL;
+
+  // Local dev fallback (same WiFi only)
+  const debuggerHost = Constants.expoConfig?.hostUri ||
+                       Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+                       Constants.manifest?.debuggerHost;
+
+  if (debuggerHost) {
+    const host = debuggerHost.split(':')[0];
+    return `http://${host}:3000`;
   }
-};
-*/
 
-const getApiUrl = () => {
-  const hostUri = Constants.expoConfig?.hostUri;
-
-  if (hostUri) {
-    const ipAddress = hostUri.split(':')[0];
-    const url = `http://${ipAddress}:3000`;
-    return url;
-  } else {
-    const url = 'http://localhost:3000';
-    return url;
-  }
+  if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
+  return 'http://localhost:3000';
 };
 
-export default function getEnvVars() {
-  const config = {
-    apiUrl: getApiUrl()
-  };
-  //console.log('Final Config:', config);
-  return config;
-}
+const getEnvVars = () => ({
+  apiUrl: getBackendIP(),
+});
+
+export default getEnvVars;
