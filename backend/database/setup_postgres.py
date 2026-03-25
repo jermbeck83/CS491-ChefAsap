@@ -76,6 +76,13 @@ Total: 46 tables organized into the following categories:
 9. REFERENCE DATA (1 table)
    - cuisine_types: Master list of cuisine categories
 
+10. LOGS (1 table)
+   - app_events_log: Structured logging of user events for analytics
+
+11. MATERIALIZED VIEWS (2 views for analytics)   
+     mv_chef_performance: Aggregated chef performance metrics (total bookings, completion rate, average rating)
+   - mv_geographic_demand: Customer search demand by location and date (for identifying underserved areas)
+
 === INDEXES ===
 All tables include appropriate indexes for:
 - Foreign keys
@@ -866,6 +873,7 @@ def init_postgres_db():
                 spice_level VARCHAR(50),
                 price DECIMAL(10, 2),
                 prep_time INTEGER,
+                category_id INTEGER,
                 is_available BOOLEAN DEFAULT TRUE,
                 is_featured BOOLEAN DEFAULT FALSE,
                 display_order INTEGER DEFAULT 0,
@@ -900,19 +908,7 @@ def init_postgres_db():
             FOR EACH ROW
             EXECUTE FUNCTION update_chef_menu_updated_at();
         ''')
-        # Create menu_categories table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS menu_categories (
-                id SERIAL PRIMARY KEY,
-                chef_id INTEGER NOT NULL REFERENCES chefs(id) ON DELETE CASCADE,
-                category_name VARCHAR(100) NOT NULL,
-                display_order INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(chef_id, category_name)
-            )
-        ''')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_menu_categories_chef_id ON menu_categories(chef_id)')
+
         # Orders table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS orders (
@@ -975,8 +971,8 @@ def init_postgres_db():
 
         cursor.execute('''
                 CREATE TABLE IF NOT EXISTS chef_kitchen_tools ( 
-                    id SERIAL PRIMARY KEY,
-                    chef_id INTEGER NOT NULL,
+                    chef_id SERIAL PRIMARY KEY,
+                    customer_id INTEGER NOT NULL,
                     tool_name VARCHAR(100) NOT NULL,
                     tool_description TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -985,6 +981,65 @@ def init_postgres_db():
                 )
         ''')
 
+
+        # ==========================================
+        # ANALYTICS & MACHINE LEARNING INFRASTRUCTURE
+        # ==========================================
+
+        # Unified Application Event Log
+        cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS app_events_log (
+                        id SERIAL PRIMARY KEY,
+                        event_category VARCHAR(50) NOT NULL CHECK (event_category IN ('navigation', 'interaction', 'transaction', 'system')),
+                        event_action VARCHAR(100) NOT NULL,
+                        actor_type VARCHAR(20) CHECK (actor_type IN ('customer', 'chef', 'guest', 'system')),
+                        actor_id INTEGER,
+                        session_id VARCHAR(100),
+                        event_data JSONB,
+                        client_timestamp TIMESTAMP NOT NULL,
+                        server_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_time ON app_events_log(server_timestamp DESC)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_action ON app_events_log(event_action)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_events_data ON app_events_log USING GIN (event_data)')
+
+        # Materialized View: Chef Performance Metrics
+        cursor.execute('''
+                    CREATE MATERIALIZED VIEW IF NOT EXISTS mv_chef_performance AS
+                    SELECT
+                        c.id AS chef_id,
+                        c.first_name,
+                        COUNT(b.id) AS total_bookings,
+                        COUNT(CASE WHEN b.status = 'completed' THEN 1 END) AS completed_bookings,
+                        COUNT(CASE WHEN b.status = 'cancelled' THEN 1 END) AS cancelled_bookings,
+                        COALESCE(rs.average_rating, 0) AS average_rating,
+                        CASE
+                            WHEN COUNT(b.id) > 0 THEN
+                                CAST(COUNT(CASE WHEN b.status = 'completed' THEN 1 END) AS FLOAT) / COUNT(b.id)
+                            ELSE 0
+                        END AS completion_rate
+                    FROM chefs c
+                    LEFT JOIN bookings b ON c.id = b.chef_id
+                    LEFT JOIN chef_rating_summary rs ON c.id = rs.chef_id
+                    GROUP BY c.id, c.first_name, rs.average_rating
+                ''')
+        cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_chef_perf_id ON mv_chef_performance(chef_id)')
+
+
+        #  Materialized View: Geographic Demand Patterns
+        cursor.execute('''
+            CREATE MATERIALIZED VIEW IF NOT EXISTS mv_geographic_demand AS
+            SELECT 
+                DATE_TRUNC('day', searched_at) AS demand_date,
+                location_name,
+                COUNT(id) AS search_volume,
+                COUNT(CASE WHEN results_count = 0 THEN 1 END) AS zero_result_searches
+            FROM customer_recent_searches
+            WHERE location_name IS NOT NULL
+            GROUP BY 1, 2
+        ''')
+        cursor.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_geo_demand ON mv_geographic_demand(demand_date, location_name)')
 
         # Add foreign key constraints for users table
         # Check if constraint exists before adding
@@ -1045,6 +1100,7 @@ def init_postgres_db():
         print("   - customers.stripe_customer_id stores Stripe customer reference")
         print("   - All card data securely managed by Stripe")
         print("   - Payment intents created via stripe_payment_bp.py blueprint")
+        print("   - Analytics (AI): app_events_log, mv_chef_performance, mv_geographic_demand")
         
     except Error as e:
         print(f"\n Error creating tables: {e}")
