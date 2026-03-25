@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { ScrollView, Text, View, TouchableOpacity, RefreshControl } from "react-native";
+import { useState, useEffect, useRef } from 'react';
+import { ScrollView, Text, View, TouchableOpacity, RefreshControl, Alert } from "react-native";
 import { Link } from 'expo-router';
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
@@ -35,11 +35,11 @@ const tempChefCard = (
 
 export default function SearchScreen() {
     const [formData, setFormData] = useState({
-        searchQuery: '',     // chef name, cuisine, or dish
-        searchType: 'chef',  // 'chef', 'cuisine', or 'dish'
-        radius: 10,    // search radius in miles (default 10)
-        gender: 'all',       // 'any', 'male', 'female'
-        timing: 'all',       // 'any', 'breakfast', 'lunch', 'dinner'
+        searchQuery: '',
+        searchType: 'chef',
+        radius: 10,
+        gender: 'all',
+        timing: 'all',
         locationAddress: '',
         latitude: null,
         longitude: null,
@@ -65,8 +65,15 @@ export default function SearchScreen() {
     const [loadingRecent, setLoadingRecent] = useState(false);
     const [refreshing, setRefreshing] = useState(null);
 
+    // Refs to prevent duplicate alerts and infinite auto-load loops
+    const errorAlertShownRef = useRef(false);
+    const autoLoadDoneRef = useRef(false);
+
     const onRefresh = () => {
         setRefreshing(true);
+        // Reset refs so a manual refresh can show errors again if needed
+        errorAlertShownRef.current = false;
+        autoLoadDoneRef.current = false;
         fetchRecentSearches();
         fetchRecentChefs();
         fetchFavoriteChefs();
@@ -75,11 +82,12 @@ export default function SearchScreen() {
 
     useEffect(() => {
         if (refreshing) setRefreshing(loading || loadingFaves || loadingRecent);
-    }, [loading, loadingFaves, loadingRecent])
+    }, [loading, loadingFaves, loadingRecent]);
 
-    // Auto-load nearby chefs when location is available
+    // Auto-load nearby chefs when location is available — only fires once
     useEffect(() => {
-        if (formData.latitude && formData.longitude && token) {
+        if (formData.latitude && formData.longitude && token && !autoLoadDoneRef.current) {
+            autoLoadDoneRef.current = true;
             fetchSearchResults();
             setAutoLoadCompleted(true);
         }
@@ -95,6 +103,8 @@ export default function SearchScreen() {
     }, [token, profileId]);
 
     const handleSearch = () => {
+        // Manual search always resets the error ref so user can see new errors
+        errorAlertShownRef.current = false;
         fetchSearchResults();
     };
 
@@ -122,18 +132,13 @@ export default function SearchScreen() {
         }
     };
 
-    // Fetch recently booked chefs (based on completed bookings)
+    // Fetch recently viewed chefs
     const fetchRecentChefs = async () => {
-        //console.log('[SearchScreen] fetchRecentChefs called, profileId:', profileId);
-        if (!profileId) {
-            //console.log('[SearchScreen] No profileId, skipping fetch');
-            return;
-        }
+        if (!profileId) return;
 
         try {
             setLoadingRecent(true);
             const url = `${apiUrl}/search/viewed-chefs/${profileId}?limit=5`;
-            //console.log('[SearchScreen] Fetching recent chefs from:', url);
 
             const response = await fetch(url, {
                 method: 'GET',
@@ -144,13 +149,9 @@ export default function SearchScreen() {
             });
 
             const data = await response.json();
-            //console.log('[SearchScreen] Recent chefs response:', data);
 
             if (response.ok && data.success) {
-                //console.log('[SearchScreen] Setting recent chefs:', data.viewed_chefs?.length || 0, 'chefs');
                 setRecentChefs(data.viewed_chefs || []);
-            } else {
-                console.log('[SearchScreen] Response not ok or not success:', response.ok, data.success);
             }
         } catch (err) {
             console.error('[SearchScreen] Failed to fetch recent chefs:', err);
@@ -160,9 +161,8 @@ export default function SearchScreen() {
     };
 
     const fetchFavoriteChefs = async () => {
-        if (!profileId) {
-            return;
-        }
+        if (!profileId) return;
+
         try {
             setLoadingFaves(true);
             const url = `${apiUrl}/booking/customer/${profileId}/favorite-chefs`;
@@ -176,12 +176,9 @@ export default function SearchScreen() {
             });
 
             const data = await response.json();
-            //console.log('[SearchScreen] favorite chefs response:', data);
 
             if (response.ok && data.success) {
                 setFavoriteChefs(data.favorite_chefs || []);
-            } else {
-                console.log('[SearchScreen] Response not ok or not success:', response.ok, data.success);
             }
         } catch (err) {
             console.error('[SearchScreen] Failed to fetch favorite chefs:', err);
@@ -208,23 +205,27 @@ export default function SearchScreen() {
 
             const allRelevantParams = [...apiParams, ...otherFutureParams];
 
-            // Add customer_id to save search history
             if (profileId) {
                 searchParams.append('customer_id', profileId);
             }
 
             for (const key of allRelevantParams) {
                 const value = formData[key];
-
                 if (value !== null && value !== '' && value !== undefined) {
-
                     searchParams.append(key, value);
                 }
             }
 
             if (!formData.latitude || !formData.longitude) {
                 setError('Location is required for search. Please enable GPS or enter an address manually.');
-                alert('Location Required: Please enable GPS or enter an address manually to search for nearby chefs.');
+                // Only show alert once
+                if (!errorAlertShownRef.current) {
+                    errorAlertShownRef.current = true;
+                    Alert.alert(
+                        'Location Required',
+                        'Please enable GPS or enter an address manually to search for nearby chefs.'
+                    );
+                }
                 setLoading(false);
                 return;
             }
@@ -242,7 +243,6 @@ export default function SearchScreen() {
             const data = await response.json();
 
             if (response.ok) {
-                // Transform backend data to match SearchResultCard format
                 const transformedResults = (data.chefs || []).map(chef => ({
                     chef_id: chef.chef_id,
                     first_name: chef.first_name,
@@ -254,33 +254,34 @@ export default function SearchScreen() {
                 }));
                 setSearchResults(transformedResults);
                 setError(null);
+                // Reset error ref on success so future errors can show
+                errorAlertShownRef.current = false;
 
-                // Refresh recent searches after a successful search
                 fetchRecentSearches();
                 setRefreshKey(prev => prev + 1);
             } else {
                 setError(data.error || 'Failed to load results.');
-                alert('Error' + (data.error || 'Failed to load results.'));
+                // Only show alert once
+                if (!errorAlertShownRef.current) {
+                    errorAlertShownRef.current = true;
+                    Alert.alert('Error', data.error || 'Failed to load results.');
+                }
             }
 
         } catch (err) {
             setError(err.message || 'Network error. Could not connect to API.');
-
-            alert('Error: ' + (err.message || 'Network error. Could not connect to API.'));
+            // Only show alert once
+            if (!errorAlertShownRef.current) {
+                errorAlertShownRef.current = true;
+                Alert.alert('Error', err.message || 'Network error. Could not connect to API.');
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
 
-    // Auto-load nearby chefs when location is available
-    useEffect(() => {
-        if (formData.latitude && formData.longitude && token) {
-            fetchSearchResults();
-        }
-    }, [formData.latitude, formData.longitude, token]);
-
-    // Render recently booked chef card
+    // Render recently viewed chef card
     const renderSmallCard = (chef) => (
         <Link key={chef.chef_id} href={`/ChefProfileScreen/${chef.chef_id}`} asChild>
             <TouchableOpacity className="flex shadow-sm mr-4 rounded-xl border-2 bg-base-100 dark:bg-base-dark-100 border-primary-100 dark:border-dark-100 shadow-primary-400 dark:shadow-dark-400">
@@ -300,7 +301,7 @@ export default function SearchScreen() {
         </Link>
     );
 
-    // Function to re-run a recent search
+    // Re-run a recent search
     const handleRecentSearchClick = (search) => {
         setFormData({
             ...formData,
@@ -314,7 +315,6 @@ export default function SearchScreen() {
             latitude: search.latitude || formData.latitude,
             longitude: search.longitude || formData.longitude,
         });
-        // Trigger search with these parameters
         setTimeout(() => fetchSearchResults(), 100);
     };
 
@@ -389,5 +389,4 @@ export default function SearchScreen() {
             <View className="h-8" />
         </ScrollView>
     );
-
 }

@@ -17,7 +17,7 @@ stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_YOUR_STRIPE_SECRET
 STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_YOUR_STRIPE_PUBLISHABLE_KEY')
 
 # JWT secret key - must match the one in auth_bp.py
-SECRET_KEY = 'your-secret-key'
+SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'your-secret-key')
 
 def token_required(f):
     """Decorator to require JWT token for protected routes"""
