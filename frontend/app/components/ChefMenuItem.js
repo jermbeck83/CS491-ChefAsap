@@ -33,16 +33,23 @@ const dietaryOptions = [
 
 const convertToPickerOptions = (optionsArray, promptLabel = "Select Option...") => {
     const options = [{ label: promptLabel, value: null }];
-
     if (optionsArray && Array.isArray(optionsArray)) {
         optionsArray.forEach(item => {
-            options.push({
-                label: item,
-                value: item,
-            });
+            options.push({ label: item, value: item });
         });
     }
     return options;
+};
+
+// Helper: determine if a photo_url is base64 or a remote path
+const getImageSource = (photoUrl, apiUrl) => {
+    if (!photoUrl) return null;
+    // Base64 data URIs are standalone — don't prepend apiUrl
+    if (photoUrl.startsWith('data:')) {
+        return { uri: photoUrl };
+    }
+    // Legacy filesystem path — prepend apiUrl
+    return { uri: `${apiUrl}${photoUrl}` };
 };
 
 export default function ChefMenuItem({
@@ -82,16 +89,10 @@ export default function ChefMenuItem({
         category_id: initialItem?.category_id || null,
     });
 
-    const cuisineOptions = convertToPickerOptions(
-        cuisineTypes,
-        "Select Cuisine Type..."
-    );
+    const cuisineOptions = convertToPickerOptions(cuisineTypes, "Select Cuisine Type...");
 
     const categoryList = [
-        ...categories.map(c => ({
-            label: c.category_name,
-            value: c.id
-        })),
+        ...categories.map(c => ({ label: c.category_name, value: c.id })),
         { label: 'Other', value: null }
     ];
 
@@ -100,7 +101,6 @@ export default function ChefMenuItem({
         setError(null);
         try {
             const url = `${apiUrl}/api/menu/item/${item.id}`;
-
             const options = {
                 method: method,
                 headers: {
@@ -108,31 +108,23 @@ export default function ChefMenuItem({
                     'Authorization': `Bearer ${token}`,
                 },
             };
-
             if (method === 'PUT' && body) {
                 options.body = JSON.stringify(body);
             }
-
             const response = await fetch(url, options);
             const data = await response.json();
-
             setLoading(false);
-
             if (!response.ok || !data.success) {
                 const errorMessage = data.error || `Failed to ${method} item.`;
                 setError(errorMessage);
                 Alert.alert("Operation Failed", errorMessage);
                 return false;
             }
-
-            //Alert.alert("Success", `Menu item ${method === 'PUT' ? 'updated' : 'deleted'} successfully.`);
             if (onItemUpdate) onItemUpdate(item.id, method);
-
             return true;
         } catch (e) {
             setLoading(false);
             setError(e.message);
-            //Alert.alert("Network Error", "Could not connect to the server.");
             return false;
         }
     };
@@ -142,10 +134,7 @@ export default function ChefMenuItem({
             if (value === form.category_id) return;
             setCategoryUpdated(true);
         }
-        setForm(prevForm => ({
-            ...prevForm,
-            [name]: value
-        }));
+        setForm(prevForm => ({ ...prevForm, [name]: value }));
     };
 
     const addMenuItemRequest = async (body) => {
@@ -153,7 +142,6 @@ export default function ChefMenuItem({
         setError(null);
         try {
             const url = `${apiUrl}/api/menu/chef/${item.chef_id}`;
-
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -162,18 +150,13 @@ export default function ChefMenuItem({
                 },
                 body: JSON.stringify(body),
             });
-
             const data = await response.json();
             setLoading(false);
-
             if (!response.ok || !data.success) {
                 Alert.alert("Operation Failed", data.error || "Failed to add new item.");
                 return false;
             }
-
-            //Alert.alert("Success", "New menu item added successfully!");
             onItemUpdate(data.item_id, 'POST_SUCCESS');
-
             return true;
         } catch (e) {
             setLoading(false);
@@ -187,19 +170,16 @@ export default function ChefMenuItem({
             ...form,
             price: parseFloat(form.price).toFixed(2)
         };
-
         if (!updatePayload.dish_name) {
             Alert.alert("Missing Field", "Dish Name is required.");
             return;
         }
-
         let success = false;
         if (isNewDraft) {
             success = await addMenuItemRequest(updatePayload);
         } else {
             success = await sendMenuItemRequest('PUT', updatePayload);
         }
-
         if (success && !isNewDraft) {
             setItem(prev => ({
                 ...prev,
@@ -218,7 +198,6 @@ export default function ChefMenuItem({
         setAvailabilityLoading(true);
         const newAvailability = !item.is_available;
         const success = await sendMenuItemRequest('PUT', { is_available: newAvailability });
-
         if (success) {
             setItem(prev => ({ ...prev, is_available: newAvailability }));
         }
@@ -228,22 +207,17 @@ export default function ChefMenuItem({
     const handleToggleFeatured = async () => {
         setFeatureLoading(true);
         setError(null);
-
         try {
             const getUrl = `${apiUrl}/api/menu/chef/${item.chef_id}/featured`;
             const getResponse = await fetch(getUrl, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-
             if (!getResponse.ok) throw new Error("Could not fetch current featured items.");
             const getData = await getResponse.json();
-
             let featuredIds = getData.featured_items.map(i => i.id);
-
             const isCurrentlyFeatured = item.is_featured;
             let newFeaturedIds = [...featuredIds];
-
             if (isCurrentlyFeatured) {
                 newFeaturedIds = newFeaturedIds.filter(id => id !== item.id);
             } else {
@@ -251,7 +225,6 @@ export default function ChefMenuItem({
                     newFeaturedIds.push(item.id);
                 }
             }
-
             const postUrl = `${apiUrl}/api/menu/chef/${item.chef_id}/featured`;
             const postResponse = await fetch(postUrl, {
                 method: 'POST',
@@ -261,21 +234,16 @@ export default function ChefMenuItem({
                 },
                 body: JSON.stringify({ item_ids: newFeaturedIds }),
             });
-
             const postData = await postResponse.json();
             setFeatureLoading(false);
-
             if (!postResponse.ok || !postData.success) {
                 const errorMessage = postData.error || "Failed to set featured dishes.";
                 setError(errorMessage);
                 Alert.alert("Operation Failed", errorMessage);
                 return;
             }
-
             setItem(prev => ({ ...prev, is_featured: !isCurrentlyFeatured }));
-            //Alert.alert("Success", `Item ${!isCurrentlyFeatured ? 'set as' : 'removed from'} featured.`);
             if (onItemUpdate) onItemUpdate(item.id, 'FEATURED_UPDATE');
-
         } catch (e) {
             setLoading(false);
             setError(e.message);
@@ -294,7 +262,7 @@ export default function ChefMenuItem({
             mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 1,
+            quality: 0.7, // Reduced quality to keep base64 size manageable
         });
 
         if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -312,7 +280,9 @@ export default function ChefMenuItem({
             });
 
             try {
-                const uploadUrl = `${apiUrl}/api/menu/item/${item.id}/photo`;
+                // Always use /upload-photo endpoint — works for both new and existing items
+                // The base64 URL is then saved with the item data
+                const uploadUrl = `${apiUrl}/api/menu/upload-photo`;
                 const response = await fetch(uploadUrl, {
                     method: 'POST',
                     headers: {
@@ -320,16 +290,19 @@ export default function ChefMenuItem({
                     },
                     body: formData,
                 });
+
                 const data = await response.json();
+
                 if (data.photo_url) {
+                    // Update both item state and form so it saves with the item
                     setItem({ ...item, photo_url: data.photo_url });
                     setForm({ ...form, photo_url: data.photo_url });
                 } else {
-                    alert('Failed to upload image');
+                    Alert.alert('Upload Failed', data.error || 'Failed to upload image');
                 }
             } catch (error) {
                 console.error('Error uploading image:', error);
-                alert('Error uploading image');
+                Alert.alert('Error', 'Failed to upload image. Please try again.');
             }
             setUploading(false);
         }
@@ -372,16 +345,16 @@ export default function ChefMenuItem({
                 />
 
                 <TouchableOpacity className="items-center pt-2" onPress={pickImage} disabled={uploading || !editing}>
-                    {item?.photo_url ?
+                    {item?.photo_url ? (
                         <Image
-                            source={{ uri: `${apiUrl}${item?.photo_url}` }}
+                            source={getImageSource(item.photo_url, apiUrl)}
                             className={"h-[150px] w-[150px] rounded-xl shadow-sm shadow-primary-500 dark:shadow-dark-500 border border-primary-400 dark:border-dark-400"}
                         />
-                        :
+                    ) : (
                         <View className="bg-white h-[150px] w-[150px] justify-center rounded-xl shadow-sm shadow-primary-500 dark:shadow-dark-500 border border-primary-100 dark:border-dark-200">
                             <Text className="text-lg text-center text-primary-400 dark:text-dark-400">NO IMAGE</Text>
                         </View>
-                    }
+                    )}
                     {editing &&
                         <Text className="text-base text-primary-400 underline pt-2 dark:text-dark-400" style={{ textAlign: "left" }}>
                             {uploading ? "Uploading..." : "Tap to change image"}
@@ -500,7 +473,7 @@ export default function ChefMenuItem({
                 <View className="flex w-1/2 justify-center">
                     {item?.photo_url ? (
                         <Image
-                            source={{ uri: `${apiUrl}${item?.photo_url}` }}
+                            source={getImageSource(item.photo_url, apiUrl)}
                             className={"h-[150px] w-[150px] rounded-xl shadow-sm shadow-primary-500 dark:shadow-dark-500 border border-primary-400 dark:border-dark-400"}
                         />
                     ) : (
@@ -531,13 +504,6 @@ export default function ChefMenuItem({
                 customClasses="absolute top-1 right-2 z-10 p-3 rounded-full pl-3"
                 disabled={featureLoading}
             />
-            {/*<Button
-                onPress={null}
-                icon={'tag'}
-                style={'primary'}
-                customClasses="absolute top-1 left-2 z-10 p-3 rounded-full pl-3"
-                disabled={featureLoading}
-            />*/}
             <Button
                 title={item?.is_available ? "Make Unavailable" : "Make Available"}
                 onPress={handleToggleAvailability}
