@@ -1,10 +1,7 @@
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Text, TouchableOpacity, View, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import Card from '../components/Card';
 import CustomPicker from "../components/Picker";
 import getEnvVars from '../../config';
 
@@ -16,34 +13,74 @@ const validatePassword = (password) => {
     { test: /[0-9]/, message: 'At least one number' },
     { test: /[!@#$%^&*]/, message: 'At least one special character (!@#$%^&*)' }
   ];
-
-  return requirements.map(req => ({
-    message: req.message,
-    met: req.test.test(password)
-  }));
+  return requirements.map(req => ({ message: req.message, met: req.test.test(password) }));
 };
 
-const validateEmail = (email) => {
-  const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(email);
-};
+const validateEmail = (email) => /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email);
+const filterName = (t) => t.replace(/[^a-zA-Z\s'-]/g, '');
+const filterDigits = (t) => t.replace(/[^0-9]/g, '');
+const filterAddress = (t) => t.replace(/[^a-zA-Z0-9\s.,\-\/#]/g, '');
+const filterAlpha = (t) => t.replace(/[^a-zA-Z\s'-]/g, '');
 
-const filterNameCharacters = (text) => {
-  const filteredText = text.replace(/[^a-zA-Z\s'-]/g, '');
-  return filteredText;
-};
+const US_STATES = [
+  { label: "State", value: "" },
+  { label: "Alabama", value: "AL" }, { label: "Alaska", value: "AK" },
+  { label: "Arizona", value: "AZ" }, { label: "Arkansas", value: "AR" },
+  { label: "California", value: "CA" }, { label: "Colorado", value: "CO" },
+  { label: "Connecticut", value: "CT" }, { label: "Delaware", value: "DE" },
+  { label: "Florida", value: "FL" }, { label: "Georgia", value: "GA" },
+  { label: "Hawaii", value: "HI" }, { label: "Idaho", value: "ID" },
+  { label: "Illinois", value: "IL" }, { label: "Indiana", value: "IN" },
+  { label: "Iowa", value: "IA" }, { label: "Kansas", value: "KS" },
+  { label: "Kentucky", value: "KY" }, { label: "Louisiana", value: "LA" },
+  { label: "Maine", value: "ME" }, { label: "Maryland", value: "MD" },
+  { label: "Massachusetts", value: "MA" }, { label: "Michigan", value: "MI" },
+  { label: "Minnesota", value: "MN" }, { label: "Mississippi", value: "MS" },
+  { label: "Missouri", value: "MO" }, { label: "Montana", value: "MT" },
+  { label: "Nebraska", value: "NE" }, { label: "Nevada", value: "NV" },
+  { label: "New Hampshire", value: "NH" }, { label: "New Jersey", value: "NJ" },
+  { label: "New Mexico", value: "NM" }, { label: "New York", value: "NY" },
+  { label: "North Carolina", value: "NC" }, { label: "North Dakota", value: "ND" },
+  { label: "Ohio", value: "OH" }, { label: "Oklahoma", value: "OK" },
+  { label: "Oregon", value: "OR" }, { label: "Pennsylvania", value: "PA" },
+  { label: "Rhode Island", value: "RI" }, { label: "South Carolina", value: "SC" },
+  { label: "South Dakota", value: "SD" }, { label: "Tennessee", value: "TN" },
+  { label: "Texas", value: "TX" }, { label: "Utah", value: "UT" },
+  { label: "Vermont", value: "VT" }, { label: "Virginia", value: "VA" },
+  { label: "Washington", value: "WA" }, { label: "West Virginia", value: "WV" },
+  { label: "Wisconsin", value: "WI" }, { label: "Wyoming", value: "WY" },
+];
 
-const filterDigits = (text) => {
-  return text.replace(/[^0-9]/g, '');
-};
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
 
-const filterAddressCharacters = (text) => {
-  return text.replace(/[^a-zA-Z0-9\s.,\-\/#]/g, '');
-};
-
-const filterAlphabeticCharacters = (text) => {
-  return text.replace(/[^a-zA-Z\s'-]/g, '');
-};
+// Lightweight input using StyleSheet — consistent with SignIn
+const FormInput = ({ placeholder, value, onChangeText, keyboardType, autoCapitalize, secureTextEntry, maxLength, error, showToggle, onToggle, visible }) => (
+  <View style={{ marginBottom: 10 }}>
+    <View style={[
+      styles.inputRow,
+      error ? { borderColor: '#e53e3e' } : {}
+    ]}>
+      <TextInput
+        style={[styles.input, showToggle && { flex: 1, marginBottom: 0 }]}
+        placeholder={placeholder}
+        placeholderTextColor="#aab4a8"
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize || 'sentences'}
+        secureTextEntry={showToggle ? !visible : secureTextEntry}
+        maxLength={maxLength}
+      />
+      {showToggle && (
+        <TouchableOpacity style={{ padding: 4, paddingRight: 12 }} onPress={onToggle}>
+          <Text style={{ fontSize: 16 }}>{visible ? '🙈' : '👁'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+    {error ? <Text style={styles.errorText}>{error}</Text> : null}
+  </View>
+);
 
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
@@ -51,7 +88,9 @@ export default function Signup() {
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [passwordMatchError, setPasswordMatchError] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -65,370 +104,207 @@ export default function Signup() {
   const { apiUrl } = getEnvVars();
 
   const handleBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-
+    if (router.canGoBack()) { router.back(); return; }
     router.replace('/');
   };
 
-  const US_STATES = [
-    { label: "State", value: "" },
-    { label: "Alabama", value: "AL" },
-    { label: "Alaska", value: "AK" },
-    { label: "Arizona", value: "AZ" },
-    { label: "Arkansas", value: "AR" },
-    { label: "California", value: "CA" },
-    { label: "Colorado", value: "CO" },
-    { label: "Connecticut", value: "CT" },
-    { label: "Delaware", value: "DE" },
-    { label: "Florida", value: "FL" },
-    { label: "Georgia", value: "GA" },
-    { label: "Hawaii", value: "HI" },
-    { label: "Idaho", value: "ID" },
-    { label: "Illinois", value: "IL" },
-    { label: "Indiana", value: "IN" },
-    { label: "Iowa", value: "IA" },
-    { label: "Kansas", value: "KS" },
-    { label: "Kentucky", value: "KY" },
-    { label: "Louisiana", value: "LA" },
-    { label: "Maine", value: "ME" },
-    { label: "Maryland", value: "MD" },
-    { label: "Massachusetts", value: "MA" },
-    { label: "Michigan", value: "MI" },
-    { label: "Minnesota", value: "MN" },
-    { label: "Mississippi", value: "MS" },
-    { label: "Missouri", value: "MO" },
-    { label: "Montana", value: "MT" },
-    { label: "Nebraska", value: "NE" },
-    { label: "Nevada", value: "NV" },
-    { label: "New Hampshire", value: "NH" },
-    { label: "New Jersey", value: "NJ" },
-    { label: "New Mexico", value: "NM" },
-    { label: "New York", value: "NY" },
-    { label: "North Carolina", value: "NC" },
-    { label: "North Dakota", value: "ND" },
-    { label: "Ohio", value: "OH" },
-    { label: "Oklahoma", value: "OK" },
-    { label: "Oregon", value: "OR" },
-    { label: "Pennsylvania", value: "PA" },
-    { label: "Rhode Island", value: "RI" },
-    { label: "South Carolina", value: "SC" },
-    { label: "South Dakota", value: "SD" },
-    { label: "Tennessee", value: "TN" },
-    { label: "Texas", value: "TX" },
-    { label: "Utah", value: "UT" },
-    { label: "Vermont", value: "VT" },
-    { label: "Virginia", value: "VA" },
-    { label: "Washington", value: "WA" },
-    { label: "West Virginia", value: "WV" },
-    { label: "Wisconsin", value: "WI" },
-    { label: "Wyoming", value: "WY" },
-  ];
-
   const showAlert = (title, message, onPress = null) => {
-    const buttons = [
-      {
-        text: 'OK',
-        onPress: () => {
-          console.log('Alert pressed:', title);
-          if (onPress) onPress();
-        }
-      }
-    ];
-
-    Alert.alert(title, message, buttons, { cancelable: false });
-  };
-
-  const tryFetch = async () => {
-    try {
-      const response = await fetch(`${apiUrl}/auth/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
-          password,
-          user_type: userType,
-          phone,
-          address,
-          address2,
-          city,
-          state,
-          zip,
-        }),
-      });
-      return { response, error: null };
-    } catch (error) {
-      return { response: null, error };
-    }
+    Alert.alert(title, message, [{ text: 'OK', onPress: () => { if (onPress) onPress(); } }], { cancelable: false });
   };
 
   const handleSignup = async () => {
-    // Check if all password requirements are met
-    const allRequirementsMet = passwordRequirements.every(req => req.met);
-    if (!allRequirementsMet) {
-      showAlert('Error', 'Please meet all password requirements');
-      return;
-    }
-
-    // Check if passwords match
-    if (password !== confirmPassword) {
-      showAlert('Error', 'Passwords do not match');
-      return;
-    }
-
-    // Check if required fields are filled
+    if (!passwordRequirements.every(req => req.met)) { showAlert('Error', 'Please meet all password requirements'); return; }
+    if (password !== confirmPassword) { showAlert('Error', 'Passwords do not match'); return; }
     if (!firstName.trim() || !lastName.trim() || !phone.trim() || !address.trim() || !city.trim() || !state.trim() || !zip.trim()) {
-      showAlert('Error', 'Please fill in all required fields');
-      return;
+      showAlert('Error', 'Please fill in all required fields'); return;
     }
-
     try {
-      console.log('Trying to connect to:', apiUrl);
-      console.log('Attempting signup...');
-      const result = await tryFetch();
-
-      if (!result.response) {
-        const errorMsg = result.error?.message || 'Unknown error';
-        console.error('Connection error:', errorMsg);
-        showAlert('Error', `Could not connect to server: ${errorMsg}`);
-        return;
-      }
-
-      const response = result.response;
-      console.log('Got response:', response.status);
-      const data = await response.json();
-      console.log('Response data:', data);
-
-      if (!response.ok) {
-        Alert.alert('Error', data.error || 'Signup failed');
-        return;
-      }
-
-      console.log('Token:', data.token);
-      console.log('User type:', userType);
-
-      showAlert('Success', 'Account created successfully!', () => {
-        router.replace('/SignInScreen');
+      const response = await fetch(`${apiUrl}/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, email, password, user_type: userType, phone, address, address2, city, state, zip }),
       });
-
+      const data = await response.json();
+      if (!response.ok) { Alert.alert('Error', data.error || 'Signup failed'); return; }
+      showAlert('Success', 'Account created successfully!', () => router.replace('/SignInScreen'));
     } catch (error) {
-      console.error('Error in handleSignup:', error);
       showAlert('Error', 'Network error: ' + error.message);
     }
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-base-100 dark:bg-base-dark-100" edges={['top', 'bottom']}>
-    <ScrollView className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5 pt-0">
-
-      <Text className="text-4xl font-bold text-center text-primary-500 dark:text-dark-500">
-        Create An Account
-      </Text>
-
-      <Button
-        title="Already have an account?"
-        style="transparent"
-        base="link"
-        customTextClasses='mb-2'
-        href="/SignInScreen"
-      />
-
-      <Card title="Personal Information" headerIcon="person">
-        <Text className="text-sm font-semibold mb-1 mt-2 text-primary-400 dark:text-dark-400">Name</Text>
-        <View className="flex-row justify-between">
-          <Input
-            placeholder="First Name"
-            value={firstName}
-            onChangeText={(text) => setFirstName(filterNameCharacters(text))}
-            containerClasses="flex-1 mx-0.5 mb-2 mt-0"
-          />
-
-          <Input
-            placeholder="Last Name"
-            value={lastName}
-            onChangeText={(text) => setLastName(filterNameCharacters(text))}
-            containerClasses="flex-1 mx-0.5 mb-2 mt-0"
-          />
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Create account</Text>
+          <Text style={styles.subtitle}>
+            Already have one?{' '}
+            <Text style={styles.link} onPress={() => router.replace('/SignInScreen')}>Sign in</Text>
+          </Text>
         </View>
 
-        <Input
-          label="Email Address"
+        {/* Personal Info */}
+        <Text style={styles.sectionLabel}>Personal Information</Text>
+        <View style={styles.row}>
+          <View style={{ flex: 1, marginRight: 6 }}>
+            <FormInput placeholder="First Name" value={firstName} onChangeText={(t) => setFirstName(filterName(t))} />
+          </View>
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <FormInput placeholder="Last Name" value={lastName} onChangeText={(t) => setLastName(filterName(t))} />
+          </View>
+        </View>
+        <FormInput
+          placeholder="Email address"
           value={email}
-          onChangeText={(text) => {
-            setEmail(text);
-            if (text.length > 0 && !validateEmail(text)) {
-              setEmailError('Please enter a valid email address');
-            } else {
-              setEmailError('');
-            }
-          }}
+          onChangeText={(t) => { setEmail(t); setEmailError(t.length > 0 && !validateEmail(t) ? 'Please enter a valid email' : ''); }}
           keyboardType="email-address"
           autoCapitalize="none"
           error={emailError}
-          placeholder="your.email@example.com"
         />
+        <FormInput placeholder="Phone number" value={phone} onChangeText={(t) => setPhone(filterDigits(t))} keyboardType="phone-pad" maxLength={10} />
 
-        <Input label="Phone Number"
-          value={phone}
-          onChangeText={(text) => setPhone(filterDigits(text))}
-          keyboardType="phone-pad"
-          placeholder="(555) 123-4567"
-          maxLength={10}
-        />
-      </Card>
+        <View style={styles.divider} />
 
-      <Card title="Create Password" headerIcon="lock">
-        <Input
-          label="Password"
-          placeholder="Enter a secure password"
+        {/* Password */}
+        <Text style={styles.sectionLabel}>Password</Text>
+        <FormInput
+          placeholder="Create a password"
           value={password}
-          onChangeText={(text) => {
-            setPassword(text);
-            setPasswordRequirements(validatePassword(text));
-            if (confirmPassword && text !== confirmPassword) {
-              setPasswordMatchError('Passwords do not match');
-            } else {
-              setPasswordMatchError('');
-            }
+          onChangeText={(t) => {
+            setPassword(t);
+            setPasswordRequirements(validatePassword(t));
+            if (confirmPassword && t !== confirmPassword) setPasswordMatchError('Passwords do not match');
+            else setPasswordMatchError('');
           }}
-          secureTextEntry
+          showToggle
+          visible={passwordVisible}
+          onToggle={() => setPasswordVisible(!passwordVisible)}
         />
-
-        <Input
-          label="Confirm Password"
-          placeholder="Re-enter your password"
+        <FormInput
+          placeholder="Confirm password"
           value={confirmPassword}
-          onChangeText={(text) => {
-            setConfirmPassword(text);
-            if (password && text !== password) {
-              setPasswordMatchError('Passwords do not match');
-            } else {
-              setPasswordMatchError('');
-            }
-          }}
-          secureTextEntry
+          onChangeText={(t) => { setConfirmPassword(t); if (password && t !== password) setPasswordMatchError('Passwords do not match'); else setPasswordMatchError(''); }}
+          showToggle
+          visible={confirmVisible}
+          onToggle={() => setConfirmVisible(!confirmVisible)}
           error={passwordMatchError}
-          containerClasses="mb-1"
         />
+        {passwordRequirements.length > 0 && (
+          <View style={styles.reqBox}>
+            {passwordRequirements.map((req, i) => (
+              <Text key={i} style={[styles.reqText, { color: req.met ? GREEN : '#9ca3af' }]}>
+                {req.met ? '✓' : '○'}  {req.message}
+              </Text>
+            ))}
+          </View>
+        )}
 
-        <View className="mt-2 p-3 bg-primary-100 rounded-xl dark:bg-dark-100">
-          <Text className="text-sm font-semibold mb-1 text-primary-400 dark:text-dark-400">Password must have:</Text>
-          {passwordRequirements.map((req, index) => (
-            <Text
-              key={index}
-              className={`text-xs mb-0.5 ${req.met ? 'text-primary-400 dark:text-dark-400' : 'text-warm-gray'}`}
-            >
-              {req.met ? '✓' : '○'} {req.message}
-            </Text>
-          ))}
-        </View>
-      </Card>
+        <View style={styles.divider} />
 
-      <Card title="Your Address" headerIcon="location">
-        <Input
-          label="Street Address"
-          placeholder="123 Main Street"
-          value={address}
-          onChangeText={(text) => setAddress(filterAddressCharacters(text))}
-        />
-
-        <Input
-          label="Apartment, Suite, etc. (Optional)"
-          placeholder="Apt 4B, Suite 200, etc."
-          value={address2}
-          onChangeText={(text) => setAddress2(filterAddressCharacters(text))}
-        />
-
-        <Input
-          label="City"
-          placeholder="City"
-          value={city}
-          onChangeText={(text) => setCity(filterAlphabeticCharacters(text))}
-        />
-
-        <View className="flex-row justify-between">
-
-          <CustomPicker
-            label="State"
-            prompt="Select a State"
-            selectedValue={state}
-            onValueChange={(v) => setState(v)}
-            items={US_STATES}
-          />
-
-          <View className="flex-1 ml-3">
-            <Input
-              label="Zip Code"
-              placeholder="12345"
-              value={zip}
-              onChangeText={(text) => setZip(filterDigits(text))}
-              keyboardType="numeric"
-              maxLength={5}
-              customClasses="text-center"
-              containerClasses="mb-2"
-            />
+        {/* Address */}
+        <Text style={styles.sectionLabel}>Your Address</Text>
+        <FormInput placeholder="Street address" value={address} onChangeText={(t) => setAddress(filterAddress(t))} />
+        <FormInput placeholder="Apt, Suite, etc. (Optional)" value={address2} onChangeText={(t) => setAddress2(filterAddress(t))} />
+        <FormInput placeholder="City" value={city} onChangeText={(t) => setCity(filterAlpha(t))} />
+        <View style={styles.row}>
+          <View style={{ flex: 1, marginRight: 6 }}>
+            <CustomPicker prompt="State" selectedValue={state} onValueChange={(v) => setState(v)} items={US_STATES} />
+          </View>
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <FormInput placeholder="Zip Code" value={zip} onChangeText={(t) => setZip(filterDigits(t))} keyboardType="numeric" maxLength={5} />
           </View>
         </View>
-      </Card>
 
-      <Card title="I am a..." headerIcon="smiley">
-        <View className="flex-row justify-between mt-2">
+        <View style={styles.divider} />
 
-          <TouchableOpacity
-            className={`flex-1 py-4 px-2 rounded-2xl mx-0.5 items-center border ${userType === 'customer'
-              ? 'bg-primary-200 border-primary-400 dark:bg-dark-200 dark:border-dark-400'
-              : 'bg-primary-100 border-primary-200 dark:bg-dark-100 dark:border-dark-200'
-              }`}
-            onPress={() => setUserType('customer')}
-          >
-            <Text
-              className={`text-base font-bold text-center mb-1 ${userType === 'customer' ? 'text-primary-500' : 'text-primary-400 dark:text-dark-400'
-                }`}
+        {/* User Type */}
+        <Text style={styles.sectionLabel}>I am a...</Text>
+        <View style={styles.row}>
+          {[
+            { type: 'customer', label: 'Customer', sub: 'Looking for chefs' },
+            { type: 'chef', label: 'Chef', sub: 'Offering services' },
+          ].map(({ type, label, sub }) => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.typeCard,
+                userType === type ? styles.typeCardActive : styles.typeCardInactive,
+                type === 'customer' ? { marginRight: 6 } : { marginLeft: 6 }
+              ]}
+              onPress={() => setUserType(type)}
+              activeOpacity={0.8}
             >
-              Customer
-            </Text>
-            <Text className="text-xs text-center text-warm-gray">Looking for chefs</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            className={`flex-1 py-4 px-2 rounded-2xl mx-0.5 items-center border ${userType === 'chef'
-              ? 'bg-primary-200 border-primary-400 dark:bg-dark-200 dark:border-dark-400'
-              : 'bg-primary-100 border-primary-200 dark:bg-dark-100 dark:border-dark-200'
-              }`}
-            onPress={() => setUserType('chef')}
-          >
-            <Text
-              className={`text-base font-bold text-center mb-1 ${userType === 'chef' ? 'text-primary-500' : 'text-primary-400 dark:text-dark-400'
-                }`}
-            >
-              Chef
-            </Text>
-            <Text className="text-xs text-center text-warm-gray">Offering services</Text>
-          </TouchableOpacity>
+              <Text style={[styles.typeLabel, { color: userType === type ? GREEN : '#6b8f71' }]}>{label}</Text>
+              <Text style={styles.typeSub}>{sub}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      </Card>
 
-      <Button
-        title="Create Account"
-        style="primary"
-        onPress={handleSignup}
-      />
+        <View style={styles.divider} />
 
-      <Button
-        title="← Back"
-        style="secondary"
-        onPress={handleBack}
-      />
+        {/* Submit */}
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleSignup} activeOpacity={0.85}>
+          <Text style={styles.primaryBtnText}>Create Account</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>← Back</Text>
+        </TouchableOpacity>
 
-      <View className="h-8" />
-
-    </ScrollView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f8faf8' },
+  scrollContent: { paddingHorizontal: 28, paddingBottom: 32 },
+  header: { marginTop: 24, marginBottom: 28 },
+  title: { fontSize: 28, fontWeight: '700', color: '#1a2e1a', letterSpacing: -0.5, marginBottom: 6 },
+  subtitle: { fontSize: 15, color: '#6b8f71' },
+  link: { color: GREEN, fontWeight: '600' },
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700', color: '#8aab8a',
+    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12,
+  },
+  row: { flexDirection: 'row' },
+  divider: { height: 1, backgroundColor: '#e2ece2', marginVertical: 20 },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#dde8dd',
+    borderRadius: 12,
+  },
+  input: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#1a2e1a',
+    flex: 1,
+  },
+  errorText: { fontSize: 12, color: '#e53e3e', marginTop: 4, marginLeft: 4 },
+  reqBox: { backgroundColor: GREEN_LIGHT, borderRadius: 12, padding: 12, marginBottom: 10 },
+  reqText: { fontSize: 12, marginBottom: 3 },
+  typeCard: {
+    flex: 1, paddingVertical: 18, borderRadius: 14,
+    alignItems: 'center', borderWidth: 1.5, marginBottom: 8,
+  },
+  typeCardActive: { backgroundColor: GREEN_LIGHT, borderColor: GREEN },
+  typeCardInactive: { backgroundColor: '#fff', borderColor: '#dde8dd' },
+  typeLabel: { fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  typeSub: { fontSize: 12, color: '#8aab8a' },
+  primaryBtn: {
+    backgroundColor: GREEN, paddingVertical: 17, borderRadius: 14, alignItems: 'center',
+    shadowColor: GREEN, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+  },
+  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+  backBtn: { paddingVertical: 16, alignItems: 'center' },
+  backBtnText: { fontSize: 14, color: '#8aab8a' },
+});
