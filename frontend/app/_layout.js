@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { Stack, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { View } from 'react-native';
 import LoadingIcon from './components/LoadingIcon';
@@ -34,7 +34,9 @@ export default function RootLayout() {
 }
 
 function RootStack() {
-    const { isAuthenticated, isLoading } = useAuth();
+    const { isLoading } = useAuth();
+    const segments = useSegments();
+    const isAuthRoute = segments[0] === '(auth)';
 
     useEffect(() => {
         if (!isLoading) {
@@ -47,10 +49,20 @@ function RootStack() {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}> 
-            <Stack>
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <SafeAreaView
+            style={{ flex: 1 }}
+            edges={isAuthRoute ? [] : ['top', 'bottom']}
+        >
+            <Stack
+                screenOptions={{
+                    headerShown: false,
+                    animation: 'default',
+                    gestureEnabled: true,
+                    fullScreenGestureEnabled: true,
+                }}
+            >
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="(tabs)" />
 
                 {/*!isAuthenticated ? (
                     <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -58,8 +70,14 @@ function RootStack() {
                     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 )*/}
                 
-                <Stack.Screen name="ChefProfileScreen/[id]" options={{ headerShown: false }} />
-                <Stack.Screen name="ChefMenu/[id]" options={{ headerShown: false }} />
+                <Stack.Screen
+                    name="ChefProfileScreen/[id]"
+                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true }}
+                />
+                <Stack.Screen
+                    name="ChefMenu/[id]"
+                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true }}
+                />
             </Stack>
         </SafeAreaView>
     );
