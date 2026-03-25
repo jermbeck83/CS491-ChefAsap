@@ -1,6 +1,7 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Card from '../components/Card';
@@ -62,6 +63,15 @@ export default function Signup() {
   const [passwordRequirements, setPasswordRequirements] = useState([]);
   const router = useRouter();
   const { apiUrl } = getEnvVars();
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  };
 
   const US_STATES = [
     { label: "State", value: "" },
@@ -204,7 +214,7 @@ export default function Signup() {
       console.log('User type:', userType);
 
       showAlert('Success', 'Account created successfully!', () => {
-        router.push('/SignInScreen');
+        router.replace('/SignInScreen');
       });
 
     } catch (error) {
@@ -214,6 +224,7 @@ export default function Signup() {
   };
 
   return (
+    <SafeAreaView className="flex-1 bg-base-100 dark:bg-base-dark-100" edges={['top', 'bottom']}>
     <ScrollView className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5 pt-0">
 
       <Text className="text-4xl font-bold text-center text-primary-500 dark:text-dark-500">
@@ -412,11 +423,12 @@ export default function Signup() {
       <Button
         title="← Back"
         style="secondary"
-        href="/"
+        onPress={handleBack}
       />
 
       <View className="h-8" />
 
     </ScrollView>
+    </SafeAreaView>
   );
 }

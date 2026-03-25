@@ -1,6 +1,7 @@
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import getEnvVars from '../../config';
@@ -13,6 +14,15 @@ export default function ForgetPassword() {
 
   const { apiUrl } = getEnvVars();
   const { login } = useAuth();
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace('/');
+  };
 
   const showAlert = (title, message, onPress = null) => {
     const buttons = [
@@ -91,6 +101,7 @@ export default function ForgetPassword() {
   };
 
   return (
+    <SafeAreaView className="bg-base-100 dark:bg-base-dark-100 flex-1" edges={['top', 'bottom']}>
     <View className="bg-base-100 dark:bg-base-dark-100 flex-1 p-5 pt-0">
 
       <Text className="text-4xl font-bold text-center mb-5 text-primary-500 dark:text-dark-500">
@@ -116,8 +127,9 @@ export default function ForgetPassword() {
       <Button
         title="← Return to Sign In"
         style="secondary"
-        href="/"
+        onPress={handleBack}
       />
     </View>
+    </SafeAreaView>
   );
 }
