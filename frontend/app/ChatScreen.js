@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareFlatList, KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import getEnvVars from "../config";
 import { useAuth } from './context/AuthContext';
 import { useTheme } from './providers/ThemeProvider';
@@ -28,6 +29,7 @@ export default function ChatScreen() {
     const { manualTheme } = useTheme();
     const router = useRouter();
     const flatListRef = useRef();
+    const insets = useSafeAreaInsets();
 
     let chefId, customerId;
 
@@ -284,7 +286,10 @@ export default function ChatScreen() {
                         />
                     )}
 
-                    <View className="bg-primary-300 dark:bg-primary-400 border-t border-gray-200 dark:border-gray-700 px-2 py-2">
+                    <SafeAreaView
+                        edges={['bottom']}
+                        className="bg-primary-300 dark:bg-primary-400 border-t border-gray-200 dark:border-gray-700 px-2 py-2"
+                    >
                         <View className="flex-row justify-center mb-2">
                             <Input
                                 value={newMessage}
@@ -300,7 +305,7 @@ export default function ChatScreen() {
                                 customClasses="rounded-full h-12 w-12"
                             />
                         </View>
-                    </View>
+                    </SafeAreaView>
                 </KeyboardAvoidingView>
             </View>
         </>
