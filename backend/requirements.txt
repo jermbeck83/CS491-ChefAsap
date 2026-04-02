@@ -42,9 +42,5 @@ uritemplate==4.2.0
 urllib3==2.5.0
 Werkzeug==3.1.3
 gunicorn==21.2.0
-<<<<<<< HEAD
-psycopg2-binary>=2.9.10
-=======
 psycopg2-binary==2.9.11
->>>>>>> 13ee5a15fc2eb75db3d3ef3f12b36a6eef4789d4
 python-dotenv==1.0.0
