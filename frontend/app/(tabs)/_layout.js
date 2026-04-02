@@ -1,4 +1,4 @@
-import { View, Modal } from "react-native";
+import { View, Modal, Platform } from "react-native";
 import { Tabs, useGlobalSearchParams, useRouter } from 'expo-router';
 import Octicons from '@expo/vector-icons/Octicons';
 import { TransitionPresets } from '@react-navigation/bottom-tabs';
@@ -55,6 +55,7 @@ export default function TabLayout() {
     }, [isLoading, isAuthenticated, router]);
 
     const iconSize = 24;
+    const isIOS = Platform.OS === 'ios';
 
     const tabBarOptions = {
         headerShown: false,
@@ -64,14 +65,23 @@ export default function TabLayout() {
         //tabBarInactiveBackgroundColor: '#65A30D', // primary-300
         //tabBarShowLabels: false, //doesnt seem to do anything, should show/hide label
         tabBarHideOnKeyboard: true,
+        sceneStyle: {
+            backgroundColor: manualTheme === 'light' ? getTailwindColor('base.100') : getTailwindColor('base.dark.100'),
+        },
         // other options: tabBarIcon (notifications), tabBarAccessibilityLabel (accessibility (out of scope))
         tabBarStyle: {
             backgroundColor: manualTheme === 'light' ? getTailwindColor('primary.300') : getTailwindColor('primary.400'), // primary-300
-            height: 75, //if height needs to be defined
+            height: isIOS ? 62 : 70,
+            paddingTop: isIOS ? 6 : 4,
+            paddingBottom: isIOS ? 6 : 8,
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowOpacity: 0,
         },
         tabBarLabelStyle: {
             fontSize: 12,
             fontWeight: '600',
+            marginTop: isIOS ? 0 : 2,
         },
         screenOptions: {
             animation: 'shift', //doesnt seem to work

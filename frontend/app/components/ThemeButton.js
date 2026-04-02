@@ -5,20 +5,8 @@ import Button from './Button';
 export default function ThemeButton() {
     const { manualTheme, setManualTheme } = useTheme();
 
-    const getNextTheme = () => {
-        switch (manualTheme) {
-            case 'light': return 'dark';
-            case 'dark': return 'system';
-            case 'system': return 'light';
-            default: return 'system';
-        }
-    };
-
-    const getIcon = (theme) => {
-        if (theme === 'dark') return 'moon';
-        if (theme === 'light') return 'sun';
-        return 'device-desktop';
-    };
+    const getNextTheme = () => (manualTheme === 'dark' ? 'light' : 'dark');
+    const getIcon = (theme) => (theme === 'dark' ? 'moon' : 'sun');
 
     const iconName = getIcon(manualTheme);
 

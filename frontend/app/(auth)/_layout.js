@@ -19,25 +19,28 @@ export default function AuthLayout() {
     }, []);    
     
     return (
-        <Stack options={{ headerShown: false }} >
+        <Stack
+            screenOptions={{
+                headerShown: false,
+                animation: 'default',
+                gestureEnabled: true,
+                fullScreenGestureEnabled: true,
+            }}
+        >
             <Stack.Screen
                 name="index"
-                options={{ headerShown: false }}
             />
 
             <Stack.Screen
                 name="SignInScreen"
-                options={{ headerShown: false }}
             />
 
             <Stack.Screen
                 name="SignUpScreen"
-                options={{ headerShown: false }}
             />
 
             <Stack.Screen
                 name="ForgetPasswordScreen"
-                options={{ headerShown: false }}
             />
         </Stack>
     );

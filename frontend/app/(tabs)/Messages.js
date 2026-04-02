@@ -83,24 +83,40 @@ export default function Messages() {
         });
     };
 
-    const formatTime = (timestamp) => {
+    const formatTimeRelevance = (timestamp) => {
         if (!timestamp) return '';
-        
+
         const date = new Date(timestamp);
         const now = new Date();
-        const minsDiff = now - date;
-        const hoursDiff = minsDiff / (1000 * 60 * 60);
-        const daysDiff = minsDiff / (1000 * 60 * 60 * 24);
+        const diffMs = now - date;
 
-        if (hoursDiff < 24) {
-            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        } 
-        else if (daysDiff < 7) {
+        if (diffMs < 60 * 1000) return 'Just now';
+
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        if (diffMins < 60) return `${diffMins}m ago`;
+
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        if (diffHours < 24) return `${diffHours}h ago`;
+
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays === 1) return 'Yesterday';
+        if (diffDays < 7) {
             return date.toLocaleDateString('en-US', { weekday: 'short' });
-        } 
-        else {
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
+
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
+    const getMessagePreview = (conversation) => {
+        const preview = conversation?.last_message?.trim();
+        if (preview) return preview;
+        return 'No message preview yet';
+    };
+
+    const formatClockTime = (timestamp) => {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     };
 
     const renderConversation = ({ item }) => {
@@ -136,7 +152,7 @@ export default function Messages() {
                                 {otherUserName}
                             </Text>
                             <Text className="text-xs text-gray-500 dark:text-gray-400">
-                                {formatTime(item.last_message_at)}
+                                {formatTimeRelevance(item.last_message_at)}
                             </Text>
                         </View>
                         
@@ -145,7 +161,9 @@ export default function Messages() {
                                 className={`text-sm ${hasUnread ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'} flex-1`}
                                 numberOfLines={1}
                             >
-                                {item.last_message || 'No messages yet'}
+                                {formatClockTime(item.last_message_at)
+                                    ? `${getMessagePreview(item)} · ${formatClockTime(item.last_message_at)}`
+                                    : getMessagePreview(item)}
                             </Text>
                             
                             {hasUnread && (
@@ -210,12 +228,10 @@ export default function Messages() {
                         color={manualTheme === 'light' ? '#4D7C0F' : '#D9F99D '} 
                     />
                     <Text className="text-gray-900 dark:text-gray-100 text-xl font-semibold mt-4 text-center">
-                        No Messages
+                        No messages yet
                     </Text>
                     <Text className="text-gray-600 dark:text-gray-400 text-center mt-2">
-                        {userType === 'chef' 
-                            ? 'When customers message you, their conversations will appear here.'
-                            : 'Start a conversation with a chef to see messages here.'}
+                        Book a chef to start chatting
                     </Text>
                 </View>
             ) : (
