@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import Octicons from '@expo/vector-icons/Octicons';
 
@@ -9,7 +9,6 @@ import { useTheme } from "../providers/ThemeProvider";
 import { getTailwindColor } from '../utils/getTailwindColor';
 
 import ProfilePicture from './ProfilePicture';
-import Button from './Button';
 import RatingsDisplay from './RatingsDisplay';
 
 function formatDistance(miles) {
@@ -26,7 +25,9 @@ export default function SearchResultCard({
     distance,
     cuisine,
     timing,
-    rating,
+    average_rating,
+    review_count,
+    hourly_rate,
 }) {
     const [photoData, setPhotoData] = useState(null);
     const { token } = useAuth();
@@ -89,82 +90,94 @@ export default function SearchResultCard({
 
     const timings = Array.isArray(timing) ? timing.filter(Boolean) : [];
 
+    const rateNum = hourly_rate != null ? Number(hourly_rate) : null;
+    const showRate = rateNum != null && !Number.isNaN(rateNum);
+
     return (
-        <View className="bg-base-100 dark:bg-base-dark-100 rounded-2xl mb-4 border border-stone-200/80 dark:border-dark-100 shadow-sm shadow-primary-500/10 px-4 pt-4 pb-4">
+        <Pressable
+            onPress={handleChefPress}
+            className="bg-white dark:bg-base-dark-100 rounded-xl mb-4 border border-primary-200/90 dark:border-dark-300 overflow-hidden active:opacity-90"
+        >
 
-            <View className="flex-row items-center gap-3">
-                {loading ? (
-                    <View className="rounded-full bg-primary-100 dark:bg-dark-100 items-center justify-center"
-                        style={{ width: 48, height: 48 }}>
-                        <ActivityIndicator
-                            size="small"
-                            color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
+            <View className="px-4 pt-4 pb-3">
+                <View className="flex-row items-center gap-3">
+                    {loading ? (
+                        <View className="rounded-full bg-primary-100 dark:bg-dark-100 items-center justify-center"
+                            style={{ width: 48, height: 48 }}>
+                            <ActivityIndicator
+                                size="small"
+                                color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
+                            />
+                        </View>
+                    ) : (
+                        <ProfilePicture
+                            photoUrl={photoData}
+                            firstName={first_name}
+                            lastName={last_name}
+                            size={12}
                         />
-                    </View>
-                ) : (
-                    <ProfilePicture
-                        photoUrl={photoData}
-                        firstName={first_name}
-                        lastName={last_name}
-                        size={12}
-                    />
-                )}
+                    )}
 
-                <View className="flex-1 min-w-0 pt-0.5">
-                    <View className="flex-row items-center justify-between gap-2">
-                        <Text
-                            numberOfLines={1}
-                            className="text-lg font-bold text-primary-400 dark:text-dark-400 shrink"
-                            style={{ flex: 1, minWidth: 0 }}
-                        >
-                            {first_name} {last_name}
-                        </Text>
-                        <View className="flex-row items-center gap-0.5 shrink-0">
-                            <Octicons name="location" size={14} color={mutedIconColor} />
-                            <Text className="text-sm text-base-200 dark:text-base-dark-200">
-                                {formatDistance(distance)}
+                    <View className="flex-1 min-w-0 pt-0.5">
+                        <View className="flex-row items-center justify-between gap-2">
+                            <Text
+                                numberOfLines={1}
+                                className="text-lg font-bold text-primary-400 dark:text-dark-400 shrink"
+                                style={{ flex: 1, minWidth: 0 }}
+                            >
+                                {first_name} {last_name}
                             </Text>
+                            <View className="flex-row items-center gap-0.5 shrink-0">
+                                <Octicons name="location" size={14} color={mutedIconColor} />
+                                <Text className="text-sm text-base-200 dark:text-base-dark-200">
+                                    {formatDistance(distance)}
+                                </Text>
+                            </View>
                         </View>
-                    </View>
 
-                    {cuisineLine ? (
-                        <Text
-                            numberOfLines={2}
-                            className="text-sm text-base-200 dark:text-base-dark-200 mt-1 leading-5"
-                        >
-                            {cuisineLine}
-                        </Text>
-                    ) : null}
+                        {cuisineLine ? (
+                            <Text
+                                numberOfLines={2}
+                                className="text-sm text-base-200 dark:text-base-dark-200 mt-1 leading-5"
+                            >
+                                {cuisineLine}
+                            </Text>
+                        ) : null}
+                    </View>
                 </View>
+
+                {timings.length > 0 ? (
+                    <View className="flex-row flex-wrap gap-2 mt-3 pl-[60px]">
+                        {timings.map((label, index) => (
+                            <View
+                                key={`${label}-${index}`}
+                                className="bg-primary-100 dark:bg-dark-100 px-2.5 py-1 rounded-full"
+                            >
+                                <Text className="text-xs font-semibold text-primary-400 dark:text-dark-400">
+                                    {label}
+                                </Text>
+                            </View>
+                        ))}
+                    </View>
+                ) : null}
             </View>
 
-            {timings.length > 0 ? (
-                <View className="flex-row flex-wrap gap-2 mt-3 pl-[60px]">
-                    {timings.map((label, index) => (
-                        <View
-                            key={`${label}-${index}`}
-                            className="bg-primary-100 dark:bg-dark-100 px-2.5 py-1 rounded-full"
-                        >
-                            <Text className="text-xs font-semibold text-primary-400 dark:text-dark-400">
-                                {label}
-                            </Text>
-                        </View>
-                    ))}
-                </View>
-            ) : null}
-
-            <View className="flex-row items-center justify-between mt-4 pt-3 border-t border-stone-200 dark:border-dark-300">
-                <RatingsDisplay rating={rating} contentClassName="justify-start" />
-                <Button
-                    title="View Chef"
-                    style="accent"
-                    onPress={handleChefPress}
-                    icon="link-external"
-                    customClasses="rounded-xl py-2.5 px-4"
-                    customTextClasses="text-sm font-semibold"
-                    iconGap={6}
+            <View className="border-t border-primary-200/70 dark:border-dark-300 bg-primary-100/35 dark:bg-dark-100/50 px-4 py-3 flex-row items-center justify-between gap-3">
+                <RatingsDisplay
+                    rating={average_rating}
+                    reviewCount={review_count ?? 0}
+                    contentClassName="justify-start"
                 />
+                {showRate ? (
+                    <Text className="text-sm font-bold text-primary-400 dark:text-dark-400 shrink-0">
+                        from ${Math.round(rateNum)}/hr
+                    </Text>
+                ) : (
+                    <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400 shrink-0">
+                        View
+                    </Text>
+                )}
             </View>
-        </View>
+        </Pressable>
     );
 }
