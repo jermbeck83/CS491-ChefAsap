@@ -70,13 +70,22 @@ export default function TabLayout() {
         },
         // other options: tabBarIcon (notifications), tabBarAccessibilityLabel (accessibility (out of scope))
         tabBarStyle: {
-            backgroundColor: manualTheme === 'light' ? getTailwindColor('base.100') : getTailwindColor('primary.400'),
+            backgroundColor: manualTheme === 'light'
+                ? getTailwindColor('surface.nav')
+                : getTailwindColor('primary.400'),
             height: isIOS ? 62 : 70,
             paddingTop: isIOS ? 6 : 4,
             paddingBottom: isIOS ? 6 : 8,
             borderTopWidth: 0,
+            borderTopColor: 'transparent',
+            borderLeftWidth: 0,
+            borderRightWidth: 0,
+            borderBottomWidth: 0,
+            borderColor: 'transparent',
             elevation: 0,
             shadowOpacity: 0,
+            shadowRadius: 0,
+            shadowOffset: { width: 0, height: 0 },
         },
         tabBarLabelStyle: {
             fontSize: 12,
