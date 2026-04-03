@@ -28,6 +28,9 @@ module.exports = {
           400: '#bef264',
           500: '#d9f99d',
         },
+        surface: {
+          nav: '#ffffff', // tab bar / solid chrome on cream pages
+        },
         base: {
           100: '#fefce8', // soft cream
           200: '#6b7280', // neutral slate
@@ -39,6 +42,10 @@ module.exports = {
           },
         },
         'warm-gray': '#78716c', // warm gray
+        rating: {
+          starFilled: '#eab308',
+          starEmpty: '#d1d5db',
+        },
       },
       fontFamily: {
       }
