@@ -1,16 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import Octicons from '@expo/vector-icons/Octicons';
 
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../providers/ThemeProvider";
+import { getTailwindColor } from '../utils/getTailwindColor';
 
-import LoadingIcon from './LoadingIcon';
 import ProfilePicture from './ProfilePicture';
 import Button from './Button';
-import TagsBox from './TagsBox';
 import RatingsDisplay from './RatingsDisplay';
+
+function formatDistance(miles) {
+    if (miles == null || miles === '') return '—';
+    const n = Number(miles);
+    if (Number.isNaN(n)) return '—';
+    return `${n.toFixed(1)} mi`;
+}
 
 export default function SearchResultCard({
     chef_id,
@@ -24,10 +31,14 @@ export default function SearchResultCard({
     const [photoData, setPhotoData] = useState(null);
     const { token } = useAuth();
     const router = useRouter();
+    const { manualTheme } = useTheme();
 
     const { apiUrl } = getEnvVars();
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+
+    const mutedIconColor = manualTheme === 'light'
+        ? getTailwindColor('base.200')
+        : getTailwindColor('base.dark.200');
 
     const handleChefPress = () => {
         router.push({
@@ -43,7 +54,6 @@ export default function SearchResultCard({
             if (!chef_id) return;
 
             setLoading(true);
-            setError(null);
 
             try {
                 const url = `${apiUrl}/profile/chef/${chef_id}/photo`;
@@ -61,11 +71,9 @@ export default function SearchResultCard({
                 if (response.ok) {
                     setPhotoData(data.photo_url);
                 } else {
-                    setError(data.error || 'Failed to load profile picture.');
                     alert('Error', data.error || 'Failed to load profile picture.');
                 }
             } catch (err) {
-                setError('Network error. Could not connect to API.');
                 alert('Error: ' + (err.message || 'Network error. Could not connect to API.'));
             } finally {
                 setLoading(false);
@@ -75,42 +83,88 @@ export default function SearchResultCard({
         fetchPhoto();
     }, [chef_id]);
 
+    const cuisineLine = Array.isArray(cuisine) && cuisine.length > 0
+        ? cuisine.filter(Boolean).join(' · ')
+        : null;
+
+    const timings = Array.isArray(timing) ? timing.filter(Boolean) : [];
+
     return (
-        <View className="flex justify-center items-center bg-primary-100 rounded-3xl mb-4 border-2 border-primary-100 shadow-sm shadow-primary-500 dark:bg-dark-100 dark:border-dark-100">
+        <View className="bg-base-100 dark:bg-base-dark-100 rounded-2xl mb-4 border border-stone-200/80 dark:border-dark-100 shadow-sm shadow-primary-500/10 px-4 pt-4 pb-4">
 
-            <View className="flex-row w-full justify-between items-center p-2 pl-4 pr-4">
-                <Text className="text-3xl font-bold text-primary-400 text-center dark:text-dark-400">{first_name} {last_name}</Text>
-                <Text className="text-md text-primary-400 dark:text-dark-400">{distance} Mi.</Text>
-            </View>
-
-            {loading ?
-                <View className="h-[100px] w-full justify-center items-center pt-4 mb-4 bg-primary-100 dark:bg-dark-100 border-t-2 border-primary-300 dark:border-dark-300">
-                    <LoadingIcon message='' icon='spinner' size={64} />
-                </View>
-                :
-                <View className="flex-row w-full justify-between bg-base-100 dark:bg-base-dark-100 rounded-b-3xl border-t-2 border-primary-300 dark:border-dark-300">
-                    <View className="flex justify-between items-center w-1/2 bg-primary-100 pt-2 px-1 rounded-bl-3xl dark:bg-dark-100">
-                        <TagsBox words={cuisine} />
-                        <View>
-                            <Text className="text-md text-primary-400 dark:text-dark-400 pt-2 font-medium text-center">Available:</Text>
-                            <Text className="text-sm text-primary-400 dark:text-dark-400 pb-2 text-wrap text-center">{timing.join(', ')}</Text>
-                        </View>
-                        <Button
-                            title={"View Chef "}
-                            style={"accent"}
-                            onPress={handleChefPress}
-                            icon={"link-external"}
-                            customClasses="w-[90%] rounded-3xl"
-                            customTextClasses='text-sm font-medium'
-                            iconGap={6}
+            <View className="flex-row items-center gap-3">
+                {loading ? (
+                    <View className="rounded-full bg-primary-100 dark:bg-dark-100 items-center justify-center"
+                        style={{ width: 48, height: 48 }}>
+                        <ActivityIndicator
+                            size="small"
+                            color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
                         />
                     </View>
-                    <View className="flex justify-center items-center w-1/2 p-4 rounded-br-3xl">
-                        <ProfilePicture photoUrl={photoData} firstName={first_name} lastName={last_name} size={28} />
-                        <RatingsDisplay rating={rating} />
+                ) : (
+                    <ProfilePicture
+                        photoUrl={photoData}
+                        firstName={first_name}
+                        lastName={last_name}
+                        size={12}
+                    />
+                )}
+
+                <View className="flex-1 min-w-0 pt-0.5">
+                    <View className="flex-row items-center justify-between gap-2">
+                        <Text
+                            numberOfLines={1}
+                            className="text-lg font-bold text-primary-400 dark:text-dark-400 shrink"
+                            style={{ flex: 1, minWidth: 0 }}
+                        >
+                            {first_name} {last_name}
+                        </Text>
+                        <View className="flex-row items-center gap-0.5 shrink-0">
+                            <Octicons name="location" size={14} color={mutedIconColor} />
+                            <Text className="text-sm text-base-200 dark:text-base-dark-200">
+                                {formatDistance(distance)}
+                            </Text>
+                        </View>
                     </View>
+
+                    {cuisineLine ? (
+                        <Text
+                            numberOfLines={2}
+                            className="text-sm text-base-200 dark:text-base-dark-200 mt-1 leading-5"
+                        >
+                            {cuisineLine}
+                        </Text>
+                    ) : null}
                 </View>
-            }
+            </View>
+
+            {timings.length > 0 ? (
+                <View className="flex-row flex-wrap gap-2 mt-3 pl-[60px]">
+                    {timings.map((label, index) => (
+                        <View
+                            key={`${label}-${index}`}
+                            className="bg-primary-100 dark:bg-dark-100 px-2.5 py-1 rounded-full"
+                        >
+                            <Text className="text-xs font-semibold text-primary-400 dark:text-dark-400">
+                                {label}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+            ) : null}
+
+            <View className="flex-row items-center justify-between mt-4 pt-3 border-t border-stone-200 dark:border-dark-300">
+                <RatingsDisplay rating={rating} contentClassName="justify-start" />
+                <Button
+                    title="View Chef"
+                    style="accent"
+                    onPress={handleChefPress}
+                    icon="link-external"
+                    customClasses="rounded-xl py-2.5 px-4"
+                    customTextClasses="text-sm font-semibold"
+                    iconGap={6}
+                />
+            </View>
         </View>
     );
 }

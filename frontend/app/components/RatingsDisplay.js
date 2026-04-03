@@ -5,11 +5,12 @@ import getTailwindColor from '../utils/getTailwindColor';
 
 export default function RatingsDisplay({
     rating,
-    color
+    color,
+    contentClassName = 'justify-center',
 }) {
     rating = Math.round(rating);
     return (
-        <View className="flex-row justify-center items-center pt-2">
+        <View className={`flex-row items-center pt-2 ${contentClassName}`}>
             {Array.from({ length: rating }, (_, i) => i).map((index) =>
                 <Octicons
                     key={index}
