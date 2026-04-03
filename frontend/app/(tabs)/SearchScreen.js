@@ -41,6 +41,8 @@ export default function SearchScreen() {
         gender: 'all',
         timing: 'all',
         locationAddress: '',
+        locationDisplayLine: '',
+        locationPostalCode: '',
         latitude: null,
         longitude: null,
         min_rating: 0,
@@ -250,7 +252,9 @@ export default function SearchScreen() {
                     distance: chef.distance_miles,
                     cuisine: chef.cuisines || [],
                     timing: chef.meal_timings || [],
-                    rating: Math.round(chef.rating?.average_rating || 0)
+                    average_rating: chef.rating?.average_rating ?? null,
+                    review_count: chef.rating?.total_reviews ?? 0,
+                    hourly_rate: chef.pricing?.base_rate_per_person ?? null,
                 }));
                 setSearchResults(transformedResults);
                 setError(null);
@@ -314,6 +318,8 @@ export default function SearchScreen() {
             radius: search.radius || 10,
             latitude: search.latitude || formData.latitude,
             longitude: search.longitude || formData.longitude,
+            locationDisplayLine: '',
+            locationPostalCode: '',
         });
         setTimeout(() => fetchSearchResults(), 100);
     };
@@ -380,7 +386,9 @@ export default function SearchScreen() {
                         distance={result["distance"]}
                         cuisine={result["cuisine"]}
                         timing={result["timing"]}
-                        rating={result["rating"]}
+                        average_rating={result["average_rating"]}
+                        review_count={result["review_count"]}
+                        hourly_rate={result["hourly_rate"]}
                     />)
                     :
                     <LoadingIcon icon='food' size={64} message='Fetching Nearby Chefs...' />
