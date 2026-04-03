@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import Octicons from '@expo/vector-icons/Octicons';
 import Button from './Button';
 import Input from './Input';
 import CustomPicker from './Picker';
@@ -7,12 +8,50 @@ import Stepper from './Stepper';
 import LocationInput from './LocationInput';
 import getEnvVars from '../../config';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../providers/ThemeProvider';
+import { getTailwindColor } from '../utils/getTailwindColor';
+
+const HEADER_BANNER_BOTTOM_RADIUS = 28;
+
+const greenBannerBaseStyle = {
+    width: '100%',
+    borderWidth: 0,
+};
 
 export default function SearchBarComponent({ formData, setFormData, handleSearch }) {
     const [recentSearches, setRecentSearches] = useState([]);
     const [isDropVisible, setIsDropVisible] = useState(false);
     const { apiUrl } = getEnvVars();
     const { token, profileId } = useAuth();
+    const { manualTheme } = useTheme();
+
+    const greenHeaderStyle = useMemo(() => {
+        const backgroundColor =
+            manualTheme === 'light'
+                ? getTailwindColor('primary.300')
+                : getTailwindColor('dark.300');
+
+        return [
+            greenBannerBaseStyle,
+            {
+                backgroundColor,
+                borderBottomLeftRadius: HEADER_BANNER_BOTTOM_RADIUS,
+                borderBottomRightRadius: HEADER_BANNER_BOTTOM_RADIUS,
+            },
+            Platform.select({
+                ios: {
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 3 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 8,
+                },
+                android: {
+                    elevation: 3,
+                },
+                default: {},
+            }),
+        ];
+    }, [manualTheme]);
 
     // Fetch recent searches from API
     useEffect(() => {
@@ -80,8 +119,6 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
         { label: "Dish", value: "dish" },
     ]
 
-    const filterDigits = (text) => text.replace(/[^0-9]/g, '');
-
     const handlePrimarySearchChange = (value) => {
         setFormData(prev => ({ ...prev, searchQuery: value }));
     };
@@ -100,6 +137,8 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
                 radius: item.fullData.radius || 10,
                 latitude: item.fullData.latitude || prev.latitude,
                 longitude: item.fullData.longitude || prev.longitude,
+                locationDisplayLine: '',
+                locationPostalCode: '',
             }));
         } else {
             // Fallback to just setting query and type
@@ -108,7 +147,7 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
     };
 
     const renderDropView = () => (
-        <View className="flex-1 w-full bg-white dark:bg-black rounded-xl p-3 mt-1 mb-1 pb-0">
+        <View className="w-full bg-white dark:bg-base-dark-100 rounded-2xl p-3 pb-0">
             <View className="flex-row">
                 <CustomPicker
                     label="Search By"
@@ -176,37 +215,33 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
         </View>
     );
 
-    return (
-        <View className="w-full flex-1 gap-y-4 pb-4">
+    const HEADER_ROW =
+        'bg-white dark:bg-base-dark-100 rounded-2xl min-h-[52px] px-3';
 
-            <View className="p-4 pt-2 pb-2 bg-primary-100 rounded-xl shadow-md w-full items-center justify-center shadow-sm shadow-primary-500 dark:bg-dark-100">
-                <View className="flex-row">
+    return (
+        <View className="w-full flex-1 pb-4 overflow-visible">
+            <View className="w-full px-4 pt-3 pb-6 gap-3" style={greenHeaderStyle}>
+                <View className={`flex-row items-center ${HEADER_ROW} gap-2`}>
+                    <Octicons name="search" size={20} color="#9ca3af" />
                     <Input
-                        placeholder={`Search ${formData.searchType}...`}
+                        placeholder="Search by name, cuisine, or event type…"
                         value={formData.searchQuery}
                         onChangeText={handlePrimarySearchChange}
                         onFocus={() => setIsDropVisible(true)}
-                        containerClasses='w-[88%]'
+                        containerClasses="flex-1 mb-0 min-w-0"
+                        embedded
                     />
                     <Button
-                        icon={"search"}
+                        icon="search"
                         onPress={() => { handleSearch(); setIsDropVisible(false); }}
-                        style='accent'
-                        customClasses='rounded-lg w-12 h-12 m-1'
+                        style="accent"
+                        customClasses="rounded-xl w-11 h-11 m-0 shrink-0"
                     />
                 </View>
-                {isDropVisible && renderDropView()}
 
-            </View>
+                {isDropVisible ? renderDropView() : null}
 
-            <View>
-                <LocationInput
-                    formData={formData}
-                    setFormData={setFormData}
-                    onLocationSelect={(lat, lon, address) => {
-                        setFormData(prev => ({ ...prev, latitude: lat, longitude: lon, locationAddress: address }));
-                    }}
-                />
+                <LocationInput formData={formData} setFormData={setFormData} />
             </View>
         </View>
     );
