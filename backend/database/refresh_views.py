@@ -27,6 +27,16 @@ def refresh_analytics_views():
         logger.info("Refreshing mv_geographic_demand...")
         cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_geographic_demand;')
 
+        # Refresh ML Training Dataset Views
+        logger.info("Refreshing mv_smart_matching_features...")
+        cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_smart_matching_features;')
+
+        logger.info("Refreshing mv_customer_preference_profile...")
+        cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_customer_preference_profile;')
+
+        logger.info("Refreshing mv_demand_forecast_features...")
+        cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_demand_forecast_features;')
+
         logger.info(" All materialized views refreshed successfully.")
 
     except Exception as e:
