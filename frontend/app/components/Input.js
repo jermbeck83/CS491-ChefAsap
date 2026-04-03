@@ -9,6 +9,7 @@ export default function Input({
     isTextArea = false, // allows for multi-line input
     secureTextEntry, //allows for password hiding
     disabled = false, // disables input
+    embedded = false, // no border/bg — use inside a pre-styled row (e.g. search header)
     ...props // standard TextInput props
 }) {
     const isPasswordField = secureTextEntry === true;
@@ -18,9 +19,13 @@ export default function Input({
     };
 
     const baseClasses = "border border-primary-200 bg-white dark:bg-black rounded-full py-3 px-4 text-base text-primary-500 focus:border-primary-300 shadow-sm shadow-primary-500 dark:border-dark-200 dark:focus:border-dark-300 dark:text-dark-500";
+    const embeddedClasses = "border-0 bg-transparent py-2.5 px-2 text-base text-stone-800 shadow-none rounded-none dark:text-stone-100";
+    const shellClasses = embedded ? embeddedClasses : baseClasses;
     const finalInputClasses = isTextArea
-        ? `${baseClasses.replace('rounded-full', 'rounded-lg')} h-24 text-top`
-        : `${baseClasses} rounded-full`;
+        ? `${shellClasses.replace('rounded-full', 'rounded-lg')} h-24 text-top`
+        : embedded
+            ? `${shellClasses} min-h-[24px]`
+            : `${shellClasses} rounded-full`;
 
     const finalSecureTextEntry = isPasswordField && isPasswordVisible;
 
@@ -40,6 +45,7 @@ export default function Input({
                 style={isTextArea ? { textAlignVertical: 'top' } : {}}
                 secureTextEntry={finalSecureTextEntry}
                 editable={!disabled}
+                underlineColorAndroid={embedded ? 'transparent' : undefined}
                 {...props}
             />
 
