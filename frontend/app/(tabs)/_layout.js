@@ -59,8 +59,8 @@ export default function TabLayout() {
 
     const tabBarOptions = {
         headerShown: false,
-        tabBarActiveTintColor: manualTheme === 'light' ? getTailwindColor('primary.100') : getTailwindColor('dark.100'),
-        tabBarInactiveTintColor: manualTheme === 'light' ? getTailwindColor('dark.100') : getTailwindColor('primary.100'),
+        tabBarActiveTintColor: manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.100'),
+        tabBarInactiveTintColor: manualTheme === 'light' ? getTailwindColor('base.200') : getTailwindColor('primary.100'),
         //tabBarActiveBackgroundColor: '#BEF264', // primary-200
         //tabBarInactiveBackgroundColor: '#65A30D', // primary-300
         //tabBarShowLabels: false, //doesnt seem to do anything, should show/hide label
@@ -70,7 +70,7 @@ export default function TabLayout() {
         },
         // other options: tabBarIcon (notifications), tabBarAccessibilityLabel (accessibility (out of scope))
         tabBarStyle: {
-            backgroundColor: manualTheme === 'light' ? getTailwindColor('primary.300') : getTailwindColor('primary.400'), // primary-300
+            backgroundColor: manualTheme === 'light' ? getTailwindColor('base.100') : getTailwindColor('primary.400'),
             height: isIOS ? 62 : 70,
             paddingTop: isIOS ? 6 : 4,
             paddingBottom: isIOS ? 6 : 8,
@@ -127,7 +127,7 @@ export default function TabLayout() {
                         tabBarBadge: 5,
                         tabBarBadgeStyle: {
                             backgroundColor: 'red',
-                            color: manualTheme === 'light' ? getTailwindColor('primary.300') : getTailwindColor('primary.400'),
+                            color: '#ffffff',
                             fontSize: 10,
                         },
                         ...TransitionPresets.ShiftTransition,
@@ -206,7 +206,7 @@ export default function TabLayout() {
                         tabBarBadge: 5,
                         tabBarBadgeStyle: {
                             backgroundColor: 'red',
-                            color: manualTheme === 'light' ? getTailwindColor('primary.500') : getTailwindColor('dark.500'),
+                            color: '#ffffff',
                             fontSize: 10,
                         },
                         ...TransitionPresets.ShiftTransition,

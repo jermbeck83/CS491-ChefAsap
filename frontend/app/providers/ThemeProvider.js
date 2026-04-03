@@ -58,9 +58,7 @@ export default function ThemeProvider({ children }) {
         <ThemeContext.Provider value={contextValue}>
             <View style={{
                 flex: 1, backgroundColor: colorScheme === 'light'
-                    ? isOnAuthPage
-                        ? getTailwindColor('base.100')
-                        : getTailwindColor('primary.300')
+                    ? getTailwindColor('base.100')
                     : isOnAuthPage
                         ? getTailwindColor('base.dark.100')
                         : getTailwindColor('dark.200')
