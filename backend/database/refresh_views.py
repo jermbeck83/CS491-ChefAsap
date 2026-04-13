@@ -22,6 +22,8 @@ def refresh_analytics_views():
         # Refresh Performance Metrics
         logger.info("Refreshing mv_chef_performance...")
         cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_chef_performance;')
+        logger.info("Refreshing mv_chef_inference_features...")
+        cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_chef_inference_features;')
 
         # Refresh Geographic Demand
         logger.info("Refreshing mv_geographic_demand...")

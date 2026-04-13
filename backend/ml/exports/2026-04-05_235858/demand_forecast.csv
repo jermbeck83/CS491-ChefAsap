@@ -1,0 +1,23 @@
+booking_day,day_of_week,month,cuisine_type,meal_type,city,state,total_bookings,completed_bookings,cancelled_bookings,total_guests,avg_booking_cost,unique_customers,unique_chefs,search_volume,zero_result_searches
+2025-11-15T00:00:00+00:00,6.0,11.0,Italian,dinner,New York,NY,1,1,0,4,340.0,1,1,0,0
+2025-11-20T00:00:00+00:00,4.0,11.0,Caribbean,dinner,Brooklyn,NY,1,1,0,8,520.0,1,1,0,0
+2025-11-22T00:00:00+00:00,6.0,11.0,American,lunch,Hoboken,NJ,1,1,0,6,330.0,1,1,0,0
+2025-11-28T00:00:00+00:00,5.0,11.0,Asian,dinner,New York,NY,1,1,0,3,210.0,1,1,0,0
+2025-12-02T00:00:00+00:00,2.0,12.0,Mexican,dinner,Jersey City,NJ,1,1,0,5,300.0,1,1,0,0
+2025-12-07T00:00:00+00:00,0.0,12.0,Caribbean,breakfast,Brooklyn,NY,1,1,0,4,260.0,1,1,0,0
+2025-12-10T00:00:00+00:00,3.0,12.0,Asian,lunch,New York,NY,1,1,0,2,140.0,1,1,0,0
+2025-12-14T00:00:00+00:00,0.0,12.0,Italian,dinner,New York,NY,1,1,0,10,850.0,1,1,0,0
+2025-12-18T00:00:00+00:00,4.0,12.0,Mexican,lunch,Jersey City,NJ,1,1,0,6,360.0,1,1,0,0
+2025-12-21T00:00:00+00:00,0.0,12.0,American,dinner,Hoboken,NJ,1,1,0,4,220.0,1,1,0,0
+2026-01-05T00:00:00+00:00,1.0,1.0,Asian,dinner,New York,NY,1,1,0,3,210.0,1,1,0,0
+2026-01-12T00:00:00+00:00,1.0,1.0,Italian,dinner,New York,NY,1,1,0,6,510.0,1,1,0,0
+2026-01-18T00:00:00+00:00,0.0,1.0,Mexican,dinner,Jersey City,NJ,1,1,0,4,240.0,1,1,0,0
+2026-01-24T00:00:00+00:00,6.0,1.0,Caribbean,dinner,Brooklyn,NY,1,1,0,5,325.0,1,1,0,0
+2026-01-30T00:00:00+00:00,5.0,1.0,Asian,lunch,New York,NY,1,1,0,3,210.0,1,1,0,0
+2026-02-05T00:00:00+00:00,4.0,2.0,American,dinner,Hoboken,NJ,1,0,0,8,0.0,1,1,0,0
+2026-02-08T00:00:00+00:00,0.0,2.0,Mexican,lunch,Jersey City,NJ,1,0,0,15,0.0,1,1,0,0
+2026-02-12T00:00:00+00:00,4.0,2.0,Caribbean,dinner,Brooklyn,NY,1,0,0,3,0.0,1,1,0,0
+2026-02-20T00:00:00+00:00,5.0,2.0,Italian,dinner,New York,NY,1,0,1,7,0.0,1,1,0,0
+2026-02-25T00:00:00+00:00,3.0,2.0,American,lunch,Hoboken,NJ,1,0,1,5,0.0,1,1,0,0
+2026-04-10T00:00:00+00:00,5.0,4.0,Mexican,dinner,Jersey City,NJ,1,0,0,4,0.0,1,1,0,0
+2026-04-12T00:00:00+00:00,0.0,4.0,Asian,dinner,New York,NY,1,0,0,2,0.0,1,1,0,0

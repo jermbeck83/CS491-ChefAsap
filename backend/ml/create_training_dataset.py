@@ -45,6 +45,7 @@ def refresh_ml_views(conn):
     cursor = conn.cursor()
     try:
         views = [
+            'mv_chef_inference_features',
             'mv_smart_matching_features',
             'mv_customer_preference_profile',
             'mv_demand_forecast_features',

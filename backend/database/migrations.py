@@ -491,6 +491,104 @@ def create_mv_demand_forecast_features():
             conn.close()
 
 
+def create_mv_chef_inference_features():
+    migration_name = "create_mv_chef_inference_features"
+    description = (
+        "Creates materialized view for chef-level inference features used by the "
+        "Smart Matching Engine. Stores one row per chef with cuisine, menu, "
+        "availability, rating, pricing, location, and performance metrics."
+    )
+    rollback_script = "DROP MATERIALIZED VIEW IF EXISTS mv_chef_inference_features;"
+
+    if has_migration_run(migration_name):
+        return
+
+    print(f"{'='*70}")
+    print(f"\nRunning migration: {migration_name}")
+    print(f"{'='*70}")
+
+    conn = None
+    cursor = None
+    try:
+        conn = psycopg2.connect(**db_config)
+        cursor = conn.cursor()
+
+        print("Creating materialized view mv_chef_inference_features...")
+        cursor.execute('''
+            CREATE MATERIALIZED VIEW IF NOT EXISTS mv_chef_inference_features AS
+            SELECT
+                c.id AS chef_id,
+                c.first_name,
+                c.last_name,
+                COUNT(DISTINCT cc.cuisine_id) AS cuisine_count,
+                ARRAY_AGG(DISTINCT LOWER(ct.name))
+                    FILTER (WHERE ct.name IS NOT NULL) AS cuisine_names_lower,
+                COALESCE(mi.menu_item_count, 0) AS menu_item_count,
+                COALESCE(avail.meal_slots_available, 0) AS meal_slots_available,
+                COALESCE(crs.average_rating, 0) AS avg_rating,
+                COALESCE(crs.total_reviews, 0) AS total_reviews,
+                COALESCE(perf.total_bookings, 0) AS total_bookings,
+                COALESCE(perf.completed_bookings, 0) AS completed_bookings,
+                COALESCE(perf.completion_rate, 0) AS completion_rate,
+                cp.base_rate_per_person,
+                COALESCE(cp.produce_supply_extra_cost, 0) AS produce_supply_extra_cost,
+                COALESCE(cp.minimum_people, 1) AS min_people,
+                COALESCE(cp.maximum_people, 50) AS max_people,
+                ca.latitude,
+                ca.longitude,
+                LENGTH(COALESCE(c.description, '')) AS description_length
+            FROM chefs c
+            LEFT JOIN chef_cuisines cc ON c.id = cc.chef_id
+            LEFT JOIN cuisine_types ct ON cc.cuisine_id = ct.id
+            LEFT JOIN chef_addresses ca ON c.id = ca.chef_id AND ca.is_default = TRUE
+            LEFT JOIN chef_pricing cp ON c.id = cp.chef_id
+            LEFT JOIN chef_rating_summary crs ON c.id = crs.chef_id
+            LEFT JOIN mv_chef_performance perf ON c.id = perf.chef_id
+            LEFT JOIN (
+                SELECT chef_id, COUNT(*) AS menu_item_count
+                FROM chef_menu_items
+                WHERE is_available = TRUE
+                GROUP BY chef_id
+            ) mi ON c.id = mi.chef_id
+            LEFT JOIN (
+                SELECT chef_id, COUNT(*) AS meal_slots_available
+                FROM chef_meal_availability
+                WHERE is_available = TRUE
+                GROUP BY chef_id
+            ) avail ON c.id = avail.chef_id
+            WHERE ca.latitude IS NOT NULL AND ca.longitude IS NOT NULL
+            GROUP BY
+                c.id, c.first_name, c.last_name,
+                mi.menu_item_count, avail.meal_slots_available,
+                crs.average_rating, crs.total_reviews,
+                perf.total_bookings, perf.completed_bookings, perf.completion_rate,
+                cp.base_rate_per_person, cp.produce_supply_extra_cost,
+                cp.minimum_people, cp.maximum_people,
+                ca.latitude, ca.longitude, c.description
+        ''')
+
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_chef_inference_features
+            ON mv_chef_inference_features(chef_id)
+        ''')
+
+        conn.commit()
+        record_migration(migration_name, description, rollback_script)
+        print("mv_chef_inference_features created successfully.")
+
+    except Exception as e:
+        print(f"Error creating mv_chef_inference_features: {e}")
+        if conn:
+            conn.rollback()
+            print("Changes rolled back")
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 def create_ml_dataset_export_log():
     migration_name = "create_ml_dataset_export_log"
     description = "Creates tracking table for ML dataset exports to support reproducibility."
@@ -557,6 +655,7 @@ def run_db_updates():
         create_mv_smart_matching_features,
         create_mv_customer_preference_profile,
         create_mv_demand_forecast_features,
+        create_mv_chef_inference_features,
         create_ml_dataset_export_log,
         #add more migration functions here
     ]
