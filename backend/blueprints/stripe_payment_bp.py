@@ -615,95 +615,6 @@ def detach_payment_method(current_user_id, user_type, customer_id, payment_metho
         print(f"Error detaching payment method: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# PRODUCTION VERSION: Requires authentication
-@stripe_payment_bp.route('/create-payment-intent', methods=['POST'])
-@token_required
-def create_payment_intent(current_user_id, user_type):
-    """Create a payment intent for a booking/order (with authentication)
-    
-    This is the secure version that requires user authentication.
-    """
-    print(f"=== Creating payment intent for user_id: {current_user_id} ===")
-    
-    if user_type != 'customer':
-        return jsonify({'error': 'Only customers can create payment intents'}), 403
-    
-    data = request.get_json()
-    amount = data.get('amount')  # Amount in dollars
-    currency = data.get('currency', 'usd')
-    customer_id = data.get('customer_id')
-    payment_method_id = data.get('payment_method_id')
-    description = data.get('description', 'ChefAsap Booking Payment')
-    
-    print(f"Amount: {amount}, Customer ID: {customer_id}, Payment Method: {payment_method_id}")
-    
-    if not amount:
-        return jsonify({'error': 'Amount is required'}), 400
-    
-    if not customer_id:
-        return jsonify({'error': 'Customer ID is required'}), 400
-    
-    if not payment_method_id:
-        return jsonify({'error': 'Payment method ID is required'}), 400
-    
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = get_cursor(conn, dictionary=True, buffered=True)
-        
-        # Get Stripe customer ID if provided
-        stripe_customer_id = None
-        if customer_id:
-            cursor.execute('''
-                SELECT stripe_customer_id FROM customers
-                WHERE id = %s
-            ''', (customer_id,))
-            
-            result = cursor.fetchone()
-            if result:
-                stripe_customer_id = result.get('stripe_customer_id')
-        
-        if not stripe_customer_id:
-            return jsonify({'error': 'Stripe customer not found'}), 400
-        
-        # Convert amount to cents and ensure it's an integer
-        amount_cents = int(float(amount) * 100)
-        print(f"Amount in cents: {amount_cents}")
-        
-        # Create payment intent
-        intent_params = {
-            'amount': amount_cents,
-            'currency': currency,
-            'description': description,
-            'customer': stripe_customer_id,
-            'payment_method': payment_method_id,
-            'confirm': True,
-            'automatic_payment_methods': {'enabled': True, 'allow_redirects': 'never'}
-        }
-        
-        print(f"Creating payment intent with params: {intent_params}")
-        payment_intent = stripe.PaymentIntent.create(**intent_params)
-        
-        print(f"Payment intent created: {payment_intent.id}, status: {payment_intent.status}")
-        
-        return jsonify({
-            'success': True,
-            'client_secret': payment_intent.client_secret,
-            'payment_intent_id': payment_intent.id,
-            'status': payment_intent.status
-        }), 200
-        
-    except Exception as e:
-        print(f"Error creating payment intent: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
 # TEMPORARY: No authentication version (deprecated, kept for reference)
 # This endpoint is no longer active - /create-payment-intent now uses authentication
@@ -893,6 +804,113 @@ def test_payment():
         
     except Exception as e:
         print(f"Test payment error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+# AI DYNAMIC PRICING VERSION: Create payment intent using AI-calculated price (requires authentication)
+@stripe_payment_bp.route('/create-payment-intent', methods=['POST'])
+@token_required
+def create_payment_intent(current_user_id, user_type):
+    """Create a payment intent securely using the AI-calculated price."""
+    print(f"=== Creating payment intent for user_id: {current_user_id} ===")
+    
+    if user_type != 'customer':
+        return jsonify({'error': 'Only customers can create payment intents'}), 403
+    
+    data = request.get_json()
+    
+    # NEW: We no longer accept 'amount' from the frontend. We only ask for the booking_id.
+    booking_id = data.get('booking_id')
+    currency = data.get('currency', 'usd')
+    customer_id = data.get('customer_id')
+    payment_method_id = data.get('payment_method_id')
+    
+    if not booking_id:
+        return jsonify({'error': 'Booking ID is required'}), 400
+    
+    if not customer_id:
+        return jsonify({'error': 'Customer ID is required'}), 400
+    
+    if not payment_method_id:
+        return jsonify({'error': 'Payment method ID is required'}), 400
+    
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True, buffered=True)
+        
+        # 1. FETCH SECURE PRICE FROM DATABASE
+        cursor.execute('''
+            SELECT base_price, dynamic_price 
+            FROM bookings 
+            WHERE id = %s
+        ''', (booking_id,))
+        
+        booking = cursor.fetchone()
+        if not booking:
+            return jsonify({'error': 'Booking not found'}), 404
+            
+        final_price = booking.get('dynamic_price') or booking.get('base_price')
+        if not final_price:
+            return jsonify({'error': 'Pricing not set for this booking'}), 400
+
+        # Convert amount to cents and ensure it's an integer
+        amount_cents = int(float(final_price) * 100)
+        print(f"Secure amount in cents calculated: {amount_cents}")
+
+        # 2. Get Stripe customer ID
+        stripe_customer_id = None
+        cursor.execute('''
+            SELECT stripe_customer_id FROM customers
+            WHERE id = %s
+        ''', (customer_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            stripe_customer_id = result.get('stripe_customer_id')
+        
+        if not stripe_customer_id:
+            return jsonify({'error': 'Stripe customer not found'}), 400
+        
+        # Optional: Add context to the Stripe dashboard
+        is_surge = booking.get('dynamic_price') and booking.get('dynamic_price') > booking.get('base_price')
+        description = f"ChefAsap Booking {booking_id} (High Demand)" if is_surge else f"ChefAsap Booking {booking_id}"
+        
+        # 3. Create payment intent
+        intent_params = {
+            'amount': amount_cents,
+            'currency': currency,
+            'description': description,
+            'customer': stripe_customer_id,
+            'payment_method': payment_method_id,
+            'confirm': True,
+            'automatic_payment_methods': {'enabled': True, 'allow_redirects': 'never'},
+            'metadata': {
+                'booking_id': booking_id
+            }
+        }
+        
+        print(f"Creating payment intent with params: {intent_params}")
+        payment_intent = stripe.PaymentIntent.create(**intent_params)
+        
+        print(f"Payment intent created: {payment_intent.id}, status: {payment_intent.status}")
+        
+        return jsonify({
+            'success': True,
+            'client_secret': payment_intent.client_secret,
+            'payment_intent_id': payment_intent.id,
+            'status': payment_intent.status
+        }), 200
+        
+    except Exception as e:
+        print(f"Error creating payment intent: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
