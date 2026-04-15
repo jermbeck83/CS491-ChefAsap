@@ -351,9 +351,242 @@ def build_inference_features(conn, request_params: Dict[str, Any]):
     """
     Build inference features for live chef ranking.
 
+    request_params expected keys:
+        customer_id (optional)
+        latitude (required)
+        longitude (required)
+        cuisine_type (optional)
+        meal_type (optional)
+        party_size (optional)
+        booking_date (optional)
+        max_budget (optional)
+        radius (optional, default 30)
+
     Returns:
         chef_ids: list[int]
         X: feature matrix
         chef_data: list[dict]
     """
-    raise NotImplementedError("build_inference_features() not implemented yet")
+    customer_id = request_params.get("customer_id")
+    latitude = request_params.get("latitude")
+    longitude = request_params.get("longitude")
+    radius = request_params.get("radius", 30)
+
+    if latitude is None or longitude is None:
+        raise ValueError("latitude and longitude are required for inference feature building")
+
+    cursor = None
+    try:
+        cursor = get_cursor(conn, dictionary=True)
+
+        # 1. Candidate chef query using the chef inference materialized view
+        cursor.execute(
+            """
+            SELECT
+                cif.chef_id,
+                cif.first_name,
+                cif.last_name,
+                cif.cuisine_count,
+                cif.cuisine_names_lower,
+                cif.menu_item_count,
+                cif.meal_slots_available,
+                cif.avg_rating,
+                cif.total_reviews,
+                cif.total_bookings,
+                cif.completed_bookings,
+                cif.completion_rate,
+                cif.base_rate_per_person,
+                cif.produce_supply_extra_cost,
+                cif.min_people,
+                cif.max_people,
+                cif.latitude,
+                cif.longitude,
+                cif.description_length,
+
+                (3959 * acos(
+                    LEAST(1.0, GREATEST(-1.0,
+                        cos(radians(%s)) * cos(radians(cif.latitude)) *
+                        cos(radians(cif.longitude) - radians(%s)) +
+                        sin(radians(%s)) * sin(radians(cif.latitude))
+                    ))
+                )) AS distance_miles
+
+            FROM mv_chef_inference_features cif
+            WHERE cif.latitude IS NOT NULL
+              AND cif.longitude IS NOT NULL
+            """,
+            (latitude, longitude, latitude),
+        )
+
+        candidate_rows = cursor.fetchall()
+
+        # Filter by radius in Python to keep query simple and safe
+        candidate_rows = [
+            row for row in candidate_rows
+            if row.get("distance_miles") is not None and float(row["distance_miles"]) <= float(radius)
+        ]
+
+        if not candidate_rows:
+            return [], np.empty((0, len(FEATURE_COLUMNS)), dtype=float), []
+
+        chef_ids = [row["chef_id"] for row in candidate_rows]
+
+        # 2. Batch-load meal availability
+        cursor.execute(
+            """
+            SELECT chef_id, LOWER(meal_type) AS meal_type
+            FROM chef_meal_availability
+            WHERE chef_id = ANY(%s)
+              AND is_available = TRUE
+            """,
+            (chef_ids,),
+        )
+        meal_rows = cursor.fetchall()
+
+        meal_map: Dict[int, set] = {}
+        for row in meal_rows:
+            meal_map.setdefault(row["chef_id"], set()).add(row["meal_type"])
+
+        # 3. Batch-load day-of-week availability
+        cursor.execute(
+            """
+            SELECT chef_id, LOWER(day_of_week) AS day_of_week, LOWER(meal_type) AS meal_type
+            FROM chef_availability_days
+            WHERE chef_id = ANY(%s)
+            """,
+            (chef_ids,),
+        )
+        day_rows = cursor.fetchall()
+
+        day_map: Dict[int, set] = {}
+        day_meal_map: Dict[int, set] = {}
+        for row in day_rows:
+            chef_id_row = row["chef_id"]
+            if row.get("day_of_week"):
+                day_map.setdefault(chef_id_row, set()).add(row["day_of_week"])
+            if row.get("day_of_week") and row.get("meal_type"):
+                day_meal_map.setdefault(chef_id_row, set()).add(
+                    (row["day_of_week"], row["meal_type"])
+                )
+
+        # 4. Batch-load pair history if customer_id exists
+        pair_map: Dict[int, Dict[str, Any]] = {}
+        customer_row: Optional[Dict[str, Any]] = None
+
+        if customer_id is not None:
+            cursor.execute(
+                """
+                SELECT
+                    chef_id,
+                    completed_bookings,
+                    cancelled_bookings,
+                    declined_bookings,
+                    avg_rating_given,
+                    CASE WHEN ever_recommended THEN 1 ELSE 0 END AS ever_recommended,
+                    profile_view_count,
+                    is_favorited
+                FROM mv_smart_matching_features
+                WHERE customer_id = %s
+                  AND chef_id = ANY(%s)
+                """,
+                (customer_id, chef_ids),
+            )
+            pair_rows = cursor.fetchall()
+            pair_map = {row["chef_id"]: row for row in pair_rows}
+
+            # 5. Load customer profile if customer_id exists
+            cursor.execute(
+                """
+                SELECT
+                    customer_id,
+                    total_bookings,
+                    avg_spend,
+                    avg_party_size,
+                    preferred_cuisine,
+                    preferred_meal_type
+                FROM mv_customer_preference_profile
+                WHERE customer_id = %s
+                """,
+                (customer_id,),
+            )
+            customer_row = cursor.fetchone()
+
+        X_rows: List[List[float]] = []
+        chef_data: List[Dict[str, Any]] = []
+
+        request_meal_type = (request_params.get("meal_type") or "").strip().lower()
+        request_day = parse_day_of_week(request_params.get("booking_date"))
+
+        for chef_row in candidate_rows:
+            chef_id = chef_row["chef_id"]
+
+            available_meal_types = meal_map.get(chef_id, set())
+            available_days = day_map.get(chef_id, set())
+            available_day_meal_pairs = day_meal_map.get(chef_id, set())
+
+            # Respect both general day availability and meal/day combo when possible
+            day_of_week_available = 0
+            if request_day:
+                if request_meal_type:
+                    day_of_week_available = 1 if (request_day, request_meal_type) in available_day_meal_pairs else 0
+                else:
+                    day_of_week_available = 1 if request_day in available_days else 0
+
+            enriched_chef_row = dict(chef_row)
+            enriched_chef_row["available_meal_types"] = available_meal_types
+            enriched_chef_row["available_days"] = available_days
+
+            pair_row = pair_map.get(chef_id, {})
+
+            feature_vector = _compute_feature_vector(
+                chef_row=enriched_chef_row,
+                pair_row=pair_row,
+                customer_row=customer_row,
+                request_params=request_params,
+            )
+
+            # Override day_of_week_available slot using more exact combo logic when available
+            if "day_of_week_available" in FEATURE_COLUMNS:
+                idx = FEATURE_COLUMNS.index("day_of_week_available")
+                feature_vector[idx] = float(day_of_week_available)
+
+            X_rows.append(feature_vector)
+
+            estimated_total_cost = (
+                float(chef_row["base_rate_per_person"]) * float(request_params.get("party_size"))
+                if chef_row.get("base_rate_per_person") is not None and request_params.get("party_size")
+                else None
+            )
+
+            chef_data.append({
+                "chef_id": chef_id,
+                "first_name": chef_row.get("first_name"),
+                "last_name": chef_row.get("last_name"),
+                "distance_miles": float(chef_row["distance_miles"]) if chef_row.get("distance_miles") is not None else None,
+                "cuisines": chef_row.get("cuisine_names_lower") or [],
+                "rating": {
+                    "average_rating": float(chef_row["avg_rating"]) if chef_row.get("avg_rating") is not None else 0.0,
+                    "total_reviews": int(chef_row.get("total_reviews") or 0),
+                },
+                "pricing": {
+                    "base_rate_per_person": float(chef_row["base_rate_per_person"]) if chef_row.get("base_rate_per_person") is not None else None,
+                    "estimated_total_cost": estimated_total_cost,
+                    "minimum_people": int(chef_row.get("min_people") or 1),
+                    "maximum_people": int(chef_row.get("max_people") or 50),
+                    "produce_supply_extra_cost": float(chef_row["produce_supply_extra_cost"]) if chef_row.get("produce_supply_extra_cost") is not None else 0.0,
+                },
+                "availability": {
+                    "meal_type_available": request_meal_type in available_meal_types if request_meal_type else False,
+                    "day_of_week_available": bool(day_of_week_available),
+                    "available_meal_types": sorted(list(available_meal_types)),
+                    "available_days": sorted(list(available_days)),
+                },
+            })
+
+        X = np.array(X_rows, dtype=float) if X_rows else np.empty((0, len(FEATURE_COLUMNS)), dtype=float)
+
+        return chef_ids, X, chef_data
+
+    finally:
+        if cursor:
+            cursor.close()
