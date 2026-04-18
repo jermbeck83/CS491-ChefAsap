@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from database.config import db_config
 from database.db_helper import get_db_connection, get_cursor, handle_db_error
+from ml.matching_scorer import rank_chefs
 
 # Create the search blueprint
 search_bp = Blueprint('search', __name__)
@@ -585,3 +586,25 @@ def get_available_cuisines():
             cursor.close()
         if conn:
             conn.close()
+
+@search_bp.route('/ranked-chefs', methods=['POST'])
+def get_ranked_chefs():
+    """
+    Return ranked chefs using ML model
+    """
+    try:
+        data = request.get_json()
+
+        results = rank_chefs(data)
+
+        return jsonify({
+            "success": True,
+            "count": len(results),
+            "chefs": results
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
