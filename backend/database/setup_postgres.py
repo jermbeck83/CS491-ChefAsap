@@ -373,7 +373,7 @@ def init_postgres_db():
         # NOTE: payment_cards table removed - we use Stripe for secure card storage
         # Stripe handles all sensitive card data - we only store stripe_customer_id
 
-        # Bookings
+        # Bookings Table (Now with AI Pricing & Fraud Detection)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS bookings (
                 id SERIAL PRIMARY KEY,
@@ -384,21 +384,30 @@ def init_postgres_db():
                 event_type VARCHAR(20) DEFAULT 'dinner' CHECK (event_type IN ('birthday', 'wedding', 'party', 'dinner', 'brunch')),
                 booking_date DATE NOT NULL,
                 booking_time TIME NOT NULL,
-                base_price DECIMAL(10, 2),
-                dynamic_price DECIMAL(10, 2),
-                pricing_multiplier DECIMAL(4, 2),
-                pricing_features JSONB,
                 produce_supply VARCHAR(20) NOT NULL DEFAULT 'customer' CHECK (produce_supply IN ('customer', 'chef')),
                 number_of_people INTEGER NOT NULL,
                 special_notes TEXT,
                 status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'completed', 'cancelled')),
+                
+                -- Dynamic Pricing Engine Columns
+                base_price DECIMAL(10, 2),
+                dynamic_price DECIMAL(10, 2),
+                pricing_multiplier DECIMAL(4, 2),
+                pricing_features JSONB,
                 total_cost DECIMAL(10,2),
+                
+                -- Fraud Detection Engine Columns
+                fraud_score DECIMAL(5, 2) DEFAULT 0.00,
+                fraud_flags JSONB,
+                is_flagged_fraud BOOLEAN DEFAULT FALSE,
+                
+                -- Reviews & Metadata
                 chef_review BOOLEAN DEFAULT FALSE,
                 customer_review BOOLEAN DEFAULT FALSE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-                FOREIGN KEY (chef_id) REFERENCES chefs(id) ON DELETE SET NULL
+                FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (chef_id) REFERENCES users(id) ON DELETE SET NULL
             )
         ''')
 
