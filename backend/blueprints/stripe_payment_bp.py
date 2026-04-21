@@ -5,8 +5,13 @@ import jwt
 import os
 import stripe
 
+from services.fraud_service import FraudDetectionEngine
+import json
 # Create the blueprint
 stripe_payment_bp = Blueprint('stripe_payment', __name__)
+
+
+fraud_engine = FraudDetectionEngine()
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -813,11 +818,11 @@ def test_payment():
         if conn:
             conn.close()
 
-# AI DYNAMIC PRICING VERSION: Create payment intent using AI-calculated price (requires authentication)
+# AI DYNAMIC PRICING VERSION & FRAUD DETECTION
 @stripe_payment_bp.route('/create-payment-intent', methods=['POST'])
 @token_required
 def create_payment_intent(current_user_id, user_type):
-    """Create a payment intent securely using the AI-calculated price."""
+    """Create a payment intent securely using the AI-calculated price and fraud detection."""
     print(f"=== Creating payment intent for user_id: {current_user_id} ===")
     
     if user_type != 'customer':
@@ -825,20 +830,13 @@ def create_payment_intent(current_user_id, user_type):
     
     data = request.get_json()
     
-    # NEW: We no longer accept 'amount' from the frontend. We only ask for the booking_id.
     booking_id = data.get('booking_id')
     currency = data.get('currency', 'usd')
     customer_id = data.get('customer_id')
     payment_method_id = data.get('payment_method_id')
     
-    if not booking_id:
-        return jsonify({'error': 'Booking ID is required'}), 400
-    
-    if not customer_id:
-        return jsonify({'error': 'Customer ID is required'}), 400
-    
-    if not payment_method_id:
-        return jsonify({'error': 'Payment method ID is required'}), 400
+    if not all([booking_id, customer_id, payment_method_id]):
+        return jsonify({'error': 'Booking ID, Customer ID, and Payment method ID are required'}), 400
     
     conn = None
     cursor = None
@@ -846,7 +844,7 @@ def create_payment_intent(current_user_id, user_type):
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True, buffered=True)
         
-        # 1. FETCH SECURE PRICE FROM DATABASE
+        #FETCH SECURE PRICE FROM DATABASE
         cursor.execute('''
             SELECT base_price, dynamic_price 
             FROM bookings 
@@ -865,25 +863,52 @@ def create_payment_intent(current_user_id, user_type):
         amount_cents = int(float(final_price) * 100)
         print(f"Secure amount in cents calculated: {amount_cents}")
 
-        # 2. Get Stripe customer ID
-        stripe_customer_id = None
+        # --- FRAUD DETECTION INTERCEPTION ---
+        # Evaluate risk before wasting API calls to Stripe
+        risk_assessment = fraud_engine.evaluate_transaction_risk(
+            customer_id=customer_id, 
+            amount_cents=amount_cents,
+            event_zip="00000" # Placeholder: Update if you capture event_zip in bookings table
+        )
+        
+        # Log the fraud analysis to the database
+        cursor.execute('''
+            UPDATE bookings 
+            SET fraud_score = %s, fraud_flags = %s, is_flagged_fraud = %s
+            WHERE id = %s
+        ''', (
+            risk_assessment['fraud_score'], 
+            json.dumps(risk_assessment['flags']), 
+            risk_assessment['is_flagged'], 
+            booking_id
+        ))
+        conn.commit()
+
+        # If the risk is too high, block the transaction immediately
+        if risk_assessment['is_flagged']:
+            print(f"🚨 BLOCKED SUSPICIOUS TRANSACTION: Booking {booking_id}")
+            return jsonify({
+                'error': 'This transaction was flagged by our security systems. Please contact support.',
+                'fraud_score': risk_assessment['fraud_score'] 
+            }), 403
+        # --------------------------------------------
+
+        # 2. Get Stripe customer ID (Only happens if fraud check passes)
         cursor.execute('''
             SELECT stripe_customer_id FROM customers
             WHERE id = %s
         ''', (customer_id,))
         
         result = cursor.fetchone()
-        if result:
-            stripe_customer_id = result.get('stripe_customer_id')
+        stripe_customer_id = result.get('stripe_customer_id') if result else None
         
         if not stripe_customer_id:
             return jsonify({'error': 'Stripe customer not found'}), 400
         
-        # Optional: Add context to the Stripe dashboard
+        # 3. Create payment intent
         is_surge = booking.get('dynamic_price') and booking.get('dynamic_price') > booking.get('base_price')
         description = f"ChefAsap Booking {booking_id} (High Demand)" if is_surge else f"ChefAsap Booking {booking_id}"
         
-        # 3. Create payment intent
         intent_params = {
             'amount': amount_cents,
             'currency': currency,
@@ -915,7 +940,5 @@ def create_payment_intent(current_user_id, user_type):
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
     finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        if cursor: cursor.close()
+        if conn: conn.close()
