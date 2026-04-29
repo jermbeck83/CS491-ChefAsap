@@ -1,0 +1,372 @@
+"""
+Orchestrator for the Menu & Event Planner LLM feature.
+
+Steps for a /plan request:
+  1. SQL: fetch top-20 nearby chefs (cuisine+distance+rating filtered)
+  2. SQL: fetch pricing rows for those chefs + live multiplier from DynamicPricingEngine
+  3. LLM (menu_generation): produce the full four-capability plan
+  4. Post-process: feed the LLM's recommended chef_ids through rank_chefs()
+     to attach ML match_score
+  5. Persist the plan to event_plans table
+  6. Return the enriched plan + usage stats
+"""
+
+import json
+import uuid
+from datetime import datetime
+
+from database.db_helper import get_db_connection, get_cursor
+from ml.matching_scorer import rank_chefs
+from services.pricing_engine import DynamicPricingEngine
+from services.llm_service import call_llm, DEFAULT_MODEL, FAST_MODEL
+from services.prompts import menu_generation, ingredients, cost_estimation, chef_recommendation
+
+_pricing_engine = DynamicPricingEngine()
+
+
+# ---------------------------------------------------------------------------
+# Chef retrieval
+# ---------------------------------------------------------------------------
+
+def _fetch_candidate_chefs(
+    conn, latitude: float, longitude: float, cuisine: str, limit: int = 20
+) -> list[dict]:
+    """
+    Return up to `limit` chefs filtered by cuisine (if provided) and
+    minimum average_rating >= 4.0, ordered by distance.
+    Mirrors the query shape from search_bp.py lines 54-97.
+    """
+    cursor = get_cursor(conn, dictionary=True)
+    try:
+        params = [latitude, longitude, latitude, latitude, longitude, latitude]
+        cuisine_filter = ""
+        if cuisine:
+            # Cannot reference a SELECT alias in HAVING; use the full aggregate expression.
+            cuisine_filter = "AND STRING_AGG(ct.name, ', ' ORDER BY ct.name) ILIKE %s"
+            params.append(f"%{cuisine}%")
+
+        query = f"""
+            SELECT
+                c.id AS chef_id,
+                c.first_name || ' ' || c.last_name AS full_name,
+                STRING_AGG(ct.name, ', ' ORDER BY ct.name) AS cuisines,
+                crs.average_rating,
+                crs.total_reviews,
+                cp.base_rate_per_person,
+                cp.minimum_people,
+                cp.maximum_people,
+                ca.city,
+                ca.state,
+                ca.zip_code,
+                ca.latitude,
+                ca.longitude,
+                (3959 * acos(cos(radians(%s)) * cos(radians(ca.latitude)) *
+                    cos(radians(ca.longitude) - radians(%s)) +
+                    sin(radians(%s)) * sin(radians(ca.latitude)))) AS distance_miles
+            FROM chefs c
+            INNER JOIN chef_addresses ca ON c.id = ca.chef_id AND ca.is_default = TRUE
+            LEFT JOIN chef_pricing cp ON c.id = cp.chef_id
+            LEFT JOIN chef_cuisines cc ON c.id = cc.chef_id
+            LEFT JOIN cuisine_types ct ON cc.cuisine_id = ct.id
+            LEFT JOIN chef_rating_summary crs ON c.id = crs.chef_id
+            WHERE ca.latitude IS NOT NULL AND ca.longitude IS NOT NULL
+            GROUP BY c.id, c.first_name, c.last_name,
+                     crs.average_rating, crs.total_reviews,
+                     cp.base_rate_per_person, cp.minimum_people, cp.maximum_people,
+                     ca.city, ca.state, ca.zip_code, ca.latitude, ca.longitude
+            HAVING
+                COALESCE(crs.average_rating, 0) >= 4.0
+                AND (3959 * acos(cos(radians(%s)) * cos(radians(ca.latitude)) *
+                    cos(radians(ca.longitude) - radians(%s)) +
+                    sin(radians(%s)) * sin(radians(ca.latitude)))) <= 50
+                {cuisine_filter}
+            ORDER BY distance_miles ASC, crs.average_rating DESC
+            LIMIT %s
+        """
+        params.append(limit)
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        chefs = []
+        for row in rows:
+            chefs.append({
+                "chef_id": row["chef_id"],
+                "full_name": row["full_name"],
+                "cuisines": row["cuisines"] or "",
+                "average_rating": float(row["average_rating"]) if row["average_rating"] else None,
+                "total_reviews": row["total_reviews"] or 0,
+                "base_rate_per_person": float(row["base_rate_per_person"]) if row["base_rate_per_person"] else None,
+                "minimum_people": row["minimum_people"],
+                "maximum_people": row["maximum_people"],
+                "city": row["city"],
+                "state": row["state"],
+                "distance_miles": round(float(row["distance_miles"]), 1) if row["distance_miles"] else None,
+            })
+        return chefs
+    finally:
+        cursor.close()
+
+
+def _build_pricing_context(
+    chefs: list[dict], event_date: str, zip_code: str, guest_count: int
+) -> list[dict]:
+    """
+    Enrich each chef's base rate with the dynamic multiplier from DynamicPricingEngine.
+    Falls back gracefully if pricing data is unavailable.
+    """
+    pricing_rows = []
+    for chef in chefs:
+        base_rate = chef.get("base_rate_per_person")
+        if base_rate is None:
+            pricing_rows.append({
+                "chef_id": chef["chef_id"],
+                "base_rate_per_person": None,
+                "dynamic_rate_per_person": None,
+                "multiplier": None,
+            })
+            continue
+        try:
+            quote = _pricing_engine.calculate_quote(
+                base_price=base_rate * guest_count,
+                event_date_str=event_date + "T18:00:00",
+                location_zip=zip_code,
+                chef_id=chef["chef_id"],
+                customer_id=0,
+            )
+            multiplier = quote.get("multiplier", 1.0)
+        except Exception:
+            multiplier = 1.0
+
+        pricing_rows.append({
+            "chef_id": chef["chef_id"],
+            "base_rate_per_person": base_rate,
+            "dynamic_rate_per_person": round(base_rate * multiplier, 2),
+            "multiplier": round(multiplier, 3),
+        })
+    return pricing_rows
+
+
+# ---------------------------------------------------------------------------
+# ML re-ranking
+# ---------------------------------------------------------------------------
+
+def _rerank_with_ml(plan: dict, latitude: float, longitude: float) -> dict:
+    """
+    Feed the LLM's recommended_chefs chef_ids through rank_chefs() to attach
+    the trained match_score. Returns the enriched plan.
+    """
+    recs = plan.get("recommended_chefs", [])
+    if not recs:
+        return plan
+
+    chef_ids = [r["chef_id"] for r in recs if isinstance(r.get("chef_id"), int)]
+    if not chef_ids:
+        return plan
+
+    try:
+        ranked = rank_chefs({
+            "latitude": latitude,
+            "longitude": longitude,
+            "chef_ids": chef_ids,
+        })
+        score_map = {r["chef_id"]: r.get("match_score") for r in ranked}
+    except Exception:
+        score_map = {}
+
+    for rec in recs:
+        cid = rec.get("chef_id")
+        if cid in score_map:
+            rec["ml_score"] = score_map[cid]
+
+    plan["recommended_chefs"] = sorted(
+        recs, key=lambda r: r.get("ml_score") or 0, reverse=True
+    )
+    return plan
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+def _persist_plan(
+    conn,
+    customer_id: int,
+    conversation_id: str,
+    event_date: str,
+    cuisine: str,
+    guest_count: int,
+    plan: dict,
+    usage: dict,
+) -> int:
+    """Insert the plan into event_plans and return the new row id."""
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute(
+            """
+            INSERT INTO event_plans
+                (customer_id, conversation_id, event_date, cuisine_type, guest_count,
+                 plan_json, llm_model, llm_input_tokens, llm_output_tokens, llm_cache_read_tokens)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                customer_id,
+                conversation_id,
+                event_date or None,
+                cuisine or None,
+                guest_count,
+                json.dumps(plan),
+                usage.get("model"),
+                usage.get("input_tokens", 0),
+                usage.get("output_tokens", 0),
+                usage.get("cache_read_input_tokens", 0),
+            ),
+        )
+        row = cursor.fetchone()
+        conn.commit()
+        return row['id']
+    finally:
+        cursor.close()
+
+
+def _persist_message(conn, conversation_id: str, role: str, content: str):
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute(
+            """
+            INSERT INTO event_plan_messages (conversation_id, role, content)
+            VALUES (%s, %s, %s)
+            """,
+            (conversation_id, role, content),
+        )
+        conn.commit()
+    finally:
+        cursor.close()
+
+
+def _load_messages(conn, conversation_id: str) -> list[dict]:
+    cursor = get_cursor(conn, dictionary=True)
+    try:
+        cursor.execute(
+            """
+            SELECT role, content FROM event_plan_messages
+            WHERE conversation_id = %s
+            ORDER BY created_at ASC
+            """,
+            (conversation_id,),
+        )
+        return [{"role": r["role"], "content": r["content"]} for r in cursor.fetchall()]
+    finally:
+        cursor.close()
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def create_event_plan(
+    customer_id: int,
+    latitude: float,
+    longitude: float,
+    zip_code: str,
+    cuisine: str,
+    guest_count: int,
+    event_date: str,
+    dietary: list[str],
+) -> dict:
+    """
+    One-shot plan creation. Returns the enriched plan dict plus metadata.
+    """
+    conversation_id = str(uuid.uuid4())
+    conn = get_db_connection()
+    try:
+        chefs = _fetch_candidate_chefs(conn, latitude, longitude, cuisine)
+        pricing_ctx = _build_pricing_context(chefs, event_date, zip_code, guest_count)
+
+        context = {
+            "cuisine": cuisine,
+            "guest_count": guest_count,
+            "event_date": event_date,
+            "dietary": dietary,
+            "zip_code": zip_code,
+            "available_chefs": chefs,
+            "pricing_context": pricing_ctx,
+        }
+
+        messages = menu_generation.build_messages(context)
+        plan, usage = call_llm(messages)
+        plan = _rerank_with_ml(plan, latitude, longitude)
+
+        plan_id = _persist_plan(
+            conn, customer_id, conversation_id, event_date,
+            cuisine, guest_count, plan, usage,
+        )
+        _persist_message(conn, conversation_id, "user", json.dumps(context))
+        _persist_message(conn, conversation_id, "assistant", json.dumps(plan))
+
+        return {
+            "plan_id": plan_id,
+            "conversation_id": conversation_id,
+            "plan": plan,
+            "usage": usage,
+        }
+    finally:
+        conn.close()
+
+
+def continue_conversation(
+    customer_id: int,
+    conversation_id: str,
+    user_message: str,
+    latitude: float = 0.0,
+    longitude: float = 0.0,
+) -> dict:
+    """
+    Multi-turn follow-up. Loads conversation history, appends the new user
+    message, calls Claude with the fast model, persists, returns the response.
+    """
+    conn = get_db_connection()
+    try:
+        history = _load_messages(conn, conversation_id)
+        history.append({"role": "user", "content": user_message})
+
+        plan, usage = call_llm(history, model=FAST_MODEL)
+
+        if isinstance(plan, dict) and not plan.get("_parse_error"):
+            plan = _rerank_with_ml(plan, latitude, longitude)
+
+        _persist_message(conn, conversation_id, "user", user_message)
+        _persist_message(conn, conversation_id, "assistant", json.dumps(plan))
+
+        return {
+            "conversation_id": conversation_id,
+            "response": plan,
+            "usage": usage,
+        }
+    finally:
+        conn.close()
+
+
+def get_plan(plan_id: int) -> dict | None:
+    """Fetch a saved plan by ID."""
+    conn = get_db_connection()
+    try:
+        cursor = get_cursor(conn, dictionary=True)
+        cursor.execute(
+            "SELECT * FROM event_plans WHERE id = %s", (plan_id,)
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        if not row:
+            return None
+        return {
+            "plan_id": row["id"],
+            "customer_id": row["customer_id"],
+            "conversation_id": str(row["conversation_id"]),
+            "event_date": row["event_date"].isoformat() if row["event_date"] else None,
+            "cuisine_type": row["cuisine_type"],
+            "guest_count": row["guest_count"],
+            "plan": row["plan_json"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+    finally:
+        conn.close()
