@@ -17,7 +17,7 @@ enableScreens(true);
 SplashScreen.preventAutoHideAsync();
 
 // Stripe Publishable Key
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51SRUG9IouaPAsg5LNVeX2dBt5Qm0y0Mci4dz8gTMxsiRqdtXHM0CmiA2M0vUxz6gBa3MbVtCK7NWbWlA38jpNYQC00Wzn9FdNQ';
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51T6xl4ReDmkGCaoFu8ucjyz1aREa7oE7OjyKSxqOtnVWM6TE4agF20eBfbox6xNEqG70SCgYmO8b91HDhlUJ180900CyJNHk5r';
 
 export default function RootLayout() {
     return (
