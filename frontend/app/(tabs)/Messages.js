@@ -415,30 +415,20 @@ export default function Messages() {
                                 key={tab}
                                 onPress={() => setFilter(tab)}
                                 android_ripple={{ color: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)' }}
-                                style={({ pressed }) => [
-                                    {
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 8,
-                                        borderRadius: 999,
-                                        borderWidth: 1,
-                                        borderColor: active
-                                            ? 'transparent'
-                                            : (isLight ? '#d6d3d1' : borderSubtle),
-                                        backgroundColor: active
-                                            ? (isLight ? getTailwindColor('primary.400') : '#fafaf9')
-                                            : (pressed
-                                                ? (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.06)')
-                                                : (isLight ? 'transparent' : 'rgba(255,255,255,0.04)')),
-                                    },
-                                ]}
+                                style={{
+                                    paddingHorizontal: 18,
+                                    paddingVertical: 8,
+                                    borderRadius: 999,
+                                    borderWidth: 1.5,
+                                    borderColor: active ? '#2d6a4f' : '#dde8dd',
+                                    backgroundColor: active ? '#2d6a4f' : '#fff',
+                                }}
                             >
                                 <Text
                                     style={{
                                         fontSize: 14,
                                         fontWeight: '600',
-                                        color: active
-                                            ? (isLight ? '#ffffff' : getTailwindColor('primary.400'))
-                                            : (isLight ? '#44403c' : '#e7e5e4'),
+                                        color: active ? '#ffffff' : '#4a7c59',
                                     }}
                                 >
                                     {tab}

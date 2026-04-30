@@ -288,16 +288,21 @@ export default function SearchScreen() {
     // Render recently viewed chef card
     const renderSmallCard = (chef) => (
         <Link key={chef.chef_id} href={`/ChefProfileScreen/${chef.chef_id}`} asChild>
-            <TouchableOpacity className="flex shadow-sm mr-4 rounded-xl border-2 bg-base-100 dark:bg-base-dark-100 border-primary-100 dark:border-dark-100 shadow-primary-400 dark:shadow-dark-400">
-                <View className="w-full p-2">
-                    <ProfilePicture size={24} photoUrl={chef.photo_url} firstName={chef.first_name} lastName={chef.last_name} />
+            <TouchableOpacity style={{
+                marginRight: 12, borderRadius: 14, overflow: 'hidden',
+                backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2ece2',
+                shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, width: 110,
+            }}>
+                <View style={{ padding: 8, alignItems: 'center' }}>
+                    <ProfilePicture size={20} photoUrl={chef.photo_url} firstName={chef.first_name} lastName={chef.last_name} />
                 </View>
-                <View className="bg-primary-100 dark:bg-dark-100 rounded-b-lg w-full p-2 items-center">
-                    <Text className="text-sm text-primary-400 dark:text-dark-400 text-center font-semibold">
+                <View style={{ backgroundColor: '#f8faf8', borderTopWidth: 1, borderTopColor: '#e2ece2', padding: 8, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#1a2e1a', textAlign: 'center' }} numberOfLines={1}>
                         {chef.full_name}
                     </Text>
-                    <Text className="text-xs text-primary-400 dark:text-dark-400 text-center">
-                        {chef.cuisines && chef.cuisines.length > 0 ? chef.cuisines.slice(0, 2).join(', ') : 'Chef'}
+                    <Text style={{ fontSize: 11, color: '#6b8f71', textAlign: 'center', marginTop: 2 }} numberOfLines={1}>
+                        {chef.cuisines && chef.cuisines.length > 0 ? chef.cuisines.slice(0, 1).join(', ') : 'Chef'}
                     </Text>
                     <RatingsDisplay rating={chef.rating && chef.rating.average_rating ? chef.rating.average_rating : 0} />
                 </View>
@@ -326,7 +331,7 @@ export default function SearchScreen() {
 
     return (
         <ScrollView
-            className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5"
+            style={{ flex: 1, backgroundColor: '#fefce8', padding: 20 }}
             refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
             }

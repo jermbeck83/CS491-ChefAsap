@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Octicons from '@expo/vector-icons/Octicons';
 import Button from './Button';
-import { useTheme } from '../providers/ThemeProvider';
-import { getTailwindColor } from '../utils/getTailwindColor';
+
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+const BORDER = '#e2ece2';
 
 export default function Card({
     title,
@@ -20,11 +22,7 @@ export default function Card({
     customHeaderText = ''
 }) {
     const [isExpanded, setIsExpanded] = useState(isCollapsible ? startExpanded : true);
-
-    const { manualTheme } = useTheme();
-
     const ContentWrapper = isScrollable ? ScrollView : View;
-
     const scrollProps = isScrollable
         ? {
             horizontal: scrollDirection === 'horizontal',
@@ -34,59 +32,44 @@ export default function Card({
         }
         : {};
 
-    const cardClasses = "bg-white dark:bg-black rounded-xl shadow-sm shadow-primary-500 dark:shadow-dark-500 mb-4 p-0 overflow-hidden " + customClasses;
-    const headerClasses = "flex-row items-center justify-between p-4 bg-primary-100 dark:bg-dark-100 " + customHeader;
-    const contentWrapperClasses = "m-4 " + customCard;
-    const footerClasses = "p-4 pt-0";
-
-    const HeaderContent = (
-        <View className="flex-row items-center">
-            {headerIcon && (
-                <Octicons
-                    name={headerIcon}
-                    size={20}
-                    color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
-                    style={{ marginRight: 8 }}
-                />
-            )}
-            <Text className={`text-lg font-bold text-primary-400 dark:text-dark-400 ${customHeaderText}`}>{title}</Text>
-        </View>
-    );
-
     return (
-        <View className={cardClasses}>
-
+        <View style={s.card}>
             {title && (
                 <TouchableOpacity
-                    className={headerClasses}
+                    style={s.header}
                     onPress={() => isCollapsible && setIsExpanded(!isExpanded)}
                     activeOpacity={isCollapsible ? 0.7 : 1}
                 >
-                    {HeaderContent}
-
+                    <View style={s.headerLeft}>
+                        {headerIcon && (
+                            <Octicons
+                                name={headerIcon}
+                                size={18}
+                                color={GREEN}
+                                style={{ marginRight: 8 }}
+                            />
+                        )}
+                        <Text style={s.headerText}>{title}</Text>
+                    </View>
                     {isCollapsible && (
                         <Octicons
                             name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                            size={20}
-                            color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
-                            style={{ position: 'absolute', right: 20 }}
+                            size={18}
+                            color="#8aab8a"
                         />
-                        
                     )}
                 </TouchableOpacity>
             )}
-
             {isExpanded && (
-                <ContentWrapper className={contentWrapperClasses} {...scrollProps}>
+                <ContentWrapper style={s.content} {...scrollProps}>
                     {children}
                 </ContentWrapper>
             )}
-
             {footerButtonProps && (
-                <View className={footerClasses}>
+                <View style={s.footer}>
                     <Button
                         title={footerButtonProps.title}
-                        style={footerButtonProps.style || 'accent'}
+                        style={footerButtonProps.style || 'primary'}
                         onPress={footerButtonProps.onPress}
                         href={footerButtonProps.href}
                         icon={footerButtonProps.icon}
@@ -97,3 +80,38 @@ export default function Card({
         </View>
     );
 }
+
+const s = StyleSheet.create({
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: BORDER,
+        marginBottom: 16,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        elevation: 2,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: BORDER,
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#1a2e1a',
+        letterSpacing: -0.2,
+    },
+    content: { padding: 12 },
+    footer: { padding: 16, paddingTop: 0 },
+});

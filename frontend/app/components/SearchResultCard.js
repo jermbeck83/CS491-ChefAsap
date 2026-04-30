@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, ActivityIndicator, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import Octicons from '@expo/vector-icons/Octicons';
-
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../providers/ThemeProvider";
-import { getTailwindColor } from '../utils/getTailwindColor';
-
 import ProfilePicture from './ProfilePicture';
 import RatingsDisplay from './RatingsDisplay';
+
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
 
 function formatDistance(miles) {
     if (miles == null || miles === '') return '—';
@@ -32,82 +31,50 @@ export default function SearchResultCard({
     const [photoData, setPhotoData] = useState(null);
     const { token } = useAuth();
     const router = useRouter();
-    const { manualTheme } = useTheme();
-
     const { apiUrl } = getEnvVars();
     const [loading, setLoading] = useState(true);
-
-    const mutedIconColor = manualTheme === 'light'
-        ? getTailwindColor('base.200')
-        : getTailwindColor('base.dark.200');
 
     const handleChefPress = () => {
         router.push({
             pathname: `/ChefProfileScreen/${chef_id}`,
-            params: {
-                distance: distance,
-            }
+            params: { distance },
         });
     };
 
     useEffect(() => {
         const fetchPhoto = async () => {
             if (!chef_id) return;
-
             setLoading(true);
-
             try {
                 const url = `${apiUrl}/profile/chef/${chef_id}/photo`;
-
                 const response = await fetch(url, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 });
-
                 const data = await response.json();
-
-                if (response.ok) {
-                    setPhotoData(data.photo_url);
-                } else {
-                    alert('Error', data.error || 'Failed to load profile picture.');
-                }
+                if (response.ok) setPhotoData(data.photo_url);
             } catch (err) {
-                alert('Error: ' + (err.message || 'Network error. Could not connect to API.'));
             } finally {
                 setLoading(false);
             }
         };
-
         fetchPhoto();
     }, [chef_id]);
 
     const cuisineLine = Array.isArray(cuisine) && cuisine.length > 0
         ? cuisine.filter(Boolean).join(' · ')
         : null;
-
     const timings = Array.isArray(timing) ? timing.filter(Boolean) : [];
-
     const rateNum = hourly_rate != null ? Number(hourly_rate) : null;
     const showRate = rateNum != null && !Number.isNaN(rateNum);
 
     return (
-        <Pressable
-            onPress={handleChefPress}
-            className="bg-white dark:bg-base-dark-100 rounded-xl mb-4 border border-primary-200/90 dark:border-dark-300 overflow-hidden active:opacity-90"
-        >
-
-            <View className="px-4 pt-4 pb-3">
-                <View className="flex-row items-center gap-3">
+        <Pressable onPress={handleChefPress} style={({ pressed }) => [s.card, pressed && { opacity: 0.92 }]}>
+            <View style={s.body}>
+                <View style={s.topRow}>
                     {loading ? (
-                        <View className="rounded-full bg-primary-100 dark:bg-dark-100 items-center justify-center"
-                            style={{ width: 48, height: 48 }}>
-                            <ActivityIndicator
-                                size="small"
-                                color={manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400')}
-                            />
+                        <View style={s.avatarPlaceholder}>
+                            <ActivityIndicator size="small" color={GREEN} />
                         </View>
                     ) : (
                         <ProfilePicture
@@ -117,67 +84,89 @@ export default function SearchResultCard({
                             size={12}
                         />
                     )}
-
-                    <View className="flex-1 min-w-0 pt-0.5">
-                        <View className="flex-row items-center justify-between gap-2">
-                            <Text
-                                numberOfLines={1}
-                                className="text-lg font-bold text-primary-400 dark:text-dark-400 shrink"
-                                style={{ flex: 1, minWidth: 0 }}
-                            >
+                    <View style={s.nameBlock}>
+                        <View style={s.nameRow}>
+                            <Text numberOfLines={1} style={s.name}>
                                 {first_name} {last_name}
                             </Text>
-                            <View className="flex-row items-center gap-0.5 shrink-0">
-                                <Octicons name="location" size={14} color={mutedIconColor} />
-                                <Text className="text-sm text-base-200 dark:text-base-dark-200">
-                                    {formatDistance(distance)}
-                                </Text>
+                            <View style={s.distRow}>
+                                <Octicons name="location" size={13} color="#8aab8a" />
+                                <Text style={s.distText}>{formatDistance(distance)}</Text>
                             </View>
                         </View>
-
                         {cuisineLine ? (
-                            <Text
-                                numberOfLines={2}
-                                className="text-sm text-base-200 dark:text-base-dark-200 mt-1 leading-5"
-                            >
-                                {cuisineLine}
-                            </Text>
+                            <Text numberOfLines={1} style={s.cuisine}>{cuisineLine}</Text>
                         ) : null}
                     </View>
                 </View>
 
                 {timings.length > 0 ? (
-                    <View className="flex-row flex-wrap gap-2 mt-3 pl-[60px]">
+                    <View style={s.tagsRow}>
                         {timings.map((label, index) => (
-                            <View
-                                key={`${label}-${index}`}
-                                className="bg-primary-100 dark:bg-dark-100 px-2.5 py-1 rounded-full"
-                            >
-                                <Text className="text-xs font-semibold text-primary-400 dark:text-dark-400">
-                                    {label}
-                                </Text>
+                            <View key={`${label}-${index}`} style={s.tag}>
+                                <Text style={s.tagText}>{label}</Text>
                             </View>
                         ))}
                     </View>
                 ) : null}
             </View>
 
-            <View className="border-t border-primary-200/70 dark:border-dark-300 bg-primary-100/35 dark:bg-dark-100/50 px-4 py-3 flex-row items-center justify-between gap-3">
+            <View style={s.footer}>
                 <RatingsDisplay
                     rating={average_rating}
                     reviewCount={review_count ?? 0}
                     contentClassName="justify-start"
                 />
                 {showRate ? (
-                    <Text className="text-sm font-bold text-primary-400 dark:text-dark-400 shrink-0">
-                        from ${Math.round(rateNum)}/hr
-                    </Text>
+                    <Text style={s.rate}>from ${Math.round(rateNum)}/hr</Text>
                 ) : (
-                    <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400 shrink-0">
-                        View
-                    </Text>
+                    <Text style={s.viewBtn}>View</Text>
                 )}
             </View>
         </Pressable>
     );
 }
+
+const s = StyleSheet.create({
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#e2ece2',
+        marginBottom: 12,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        elevation: 2,
+    },
+    body: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
+    topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatarPlaceholder: {
+        width: 48, height: 48, borderRadius: 24,
+        backgroundColor: '#d8f3dc',
+        alignItems: 'center', justifyContent: 'center',
+    },
+    nameBlock: { flex: 1, minWidth: 0 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    name: { fontSize: 16, fontWeight: '700', color: '#1a2e1a', flex: 1, minWidth: 0 },
+    distRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+    distText: { fontSize: 13, color: '#8aab8a' },
+    cuisine: { fontSize: 13, color: '#6b8f71', marginTop: 3 },
+    tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, paddingLeft: 60 },
+    tag: {
+        backgroundColor: '#d8f3dc',
+        paddingHorizontal: 10, paddingVertical: 4,
+        borderRadius: 20,
+    },
+    tagText: { fontSize: 12, fontWeight: '600', color: GREEN },
+    footer: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 16, paddingVertical: 10,
+        borderTopWidth: 1, borderTopColor: '#f0f5f0',
+        backgroundColor: '#f8faf8',
+    },
+    rate: { fontSize: 13, fontWeight: '700', color: GREEN },
+    viewBtn: { fontSize: 13, fontWeight: '600', color: GREEN },
+});

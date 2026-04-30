@@ -1,40 +1,59 @@
-import { View, Text, Image } from "react-native";
+import { View, Text, Image, StyleSheet } from "react-native";
 import getEnvVars from "../../config";
-import { getTailwindColor } from '../utils/getTailwindColor';
-import { useTheme } from "../providers/ThemeProvider";
+
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+
+const getImageSource = (photoUrl, apiUrl) => {
+    if (!photoUrl) return null;
+    if (photoUrl.startsWith('data:')) return { uri: photoUrl };
+    return { uri: `${apiUrl}${photoUrl}` };
+};
 
 export default function ProfilePicture({
-    photoUrl = '', // something like profile.photo_url
-    firstName = '', // profile.first_name
-    lastName = '', // profile.last_name
-    size = 32, // changes circle size, border thickness, font size; should be multiple of 4
+    photoUrl = '',
+    firstName = '',
+    lastName = '',
+    size = 32,
     customClasses = '',
 }) {
     const { apiUrl } = getEnvVars();
-    const { manualTheme } = useTheme();
+    const imgSrc = getImageSource(photoUrl, apiUrl);
+    const diameter = size * 4;
+    const borderWidth = Math.max(2, size / 8);
+    const fontSize = size * 1.5;
+    const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
+
     return (
-        <View style={{ alignItems: "center" }} className = {customClasses}>
-            {photoUrl ? (
+        <View style={{ alignItems: 'center' }}>
+            {imgSrc ? (
                 <Image
-                    source={{ uri: `${apiUrl}${photoUrl}` }}
-                    className={"rounded-full shadow-sm shadow-primary-500"}
+                    source={imgSrc}
                     style={{
-                        width: size * 4,
-                        height: size * 4,
-                        borderWidth: size / 8,
-                        borderColor: manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400'),
+                        width: diameter,
+                        height: diameter,
+                        borderRadius: diameter / 2,
+                        borderWidth,
+                        borderColor: GREEN_LIGHT,
                     }}
+                    resizeMode="cover"
                 />
             ) : (
-                <View className="rounded-full shadow-sm shadow-primary-500 justify-center items-center bg-primary-100 dark:bg-dark-100"
+                <View
                     style={{
-                        width: size * 4,
-                        height: size * 4,
-                        borderWidth: size / 8,
-                        borderColor: manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.400'),
+                        width: diameter,
+                        height: diameter,
+                        borderRadius: diameter / 2,
+                        borderWidth,
+                        borderColor: GREEN,
+                        backgroundColor: GREEN_LIGHT,
+                        alignItems: 'center',
+                        justifyContent: 'center',
                     }}
                 >
-                    <Text className="text-primary-400 font-bold text-center dark:text-dark-400" style={{ fontSize: size * 1.5 }}>{firstName[0]} {lastName[0]}</Text>
+                    <Text style={{ fontSize, fontWeight: '700', color: GREEN, letterSpacing: 1 }}>
+                        {initials}
+                    </Text>
                 </View>
             )}
         </View>

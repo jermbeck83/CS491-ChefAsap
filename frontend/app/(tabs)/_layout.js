@@ -5,17 +5,19 @@ import { TransitionPresets } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import { useTheme } from '../providers/ThemeProvider';
-import { getTailwindColor } from '../utils/getTailwindColor';
 import BookingReviewModal from "../components/BookingReviewModal";
 import OrderConfirmationModal from "../components/OrderConfirmationModal";
 import getEnvVars from "../../config";
+
+const CREAM = '#fefce8';
+const GREEN = '#2d6a4f';
+const GREEN_MUTED = '#a8c5b0';
 
 export default function TabLayout() {
     const { isAuthenticated, userType, isLoading, profileId, token } = useAuth();
     const { apiUrl } = getEnvVars();
     const router = useRouter();
-    const { manualTheme, /*setIsOnAuthPage*/ } = useTheme();
-    //setIsOnAuthPage(false);
+    const { manualTheme } = useTheme();
     const [bookings, setBookings] = useState([]);
 
     useEffect(() => {
@@ -25,10 +27,8 @@ export default function TabLayout() {
         if (!isLoading && isAuthenticated) {
             const fetchBookings = async () => {
                 if (!profileId) return;
-
                 try {
                     const url = `${apiUrl}/booking/${userType}/${profileId}/bookings/finished`;
-
                     const response = await fetch(url, {
                         method: 'GET',
                         headers: {
@@ -36,20 +36,12 @@ export default function TabLayout() {
                             'Authorization': `Bearer ${token}`,
                         },
                     });
-
                     const data = await response.json();
-                    console.log(data.bookings);
-
                     if (response.ok) {
                         setBookings(data.bookings);
-                    } else {
-                        alert('Error', data.error || 'Failed to load bookings.');
                     }
-                } catch (err) {
-                    alert('Error: ' + (err.message || 'Network error. Could not connect to API.'));
-                }
+                } catch (err) {}
             };
-
             fetchBookings();
         }
     }, [isLoading, isAuthenticated, router]);
@@ -59,52 +51,37 @@ export default function TabLayout() {
 
     const tabBarOptions = {
         headerShown: false,
-        tabBarActiveTintColor: manualTheme === 'light' ? getTailwindColor('primary.400') : getTailwindColor('dark.100'),
-        tabBarInactiveTintColor: manualTheme === 'light' ? getTailwindColor('base.200') : getTailwindColor('primary.100'),
-        //tabBarActiveBackgroundColor: '#BEF264', // primary-200
-        //tabBarInactiveBackgroundColor: '#65A30D', // primary-300
-        //tabBarShowLabels: false, //doesnt seem to do anything, should show/hide label
+        tabBarActiveTintColor: GREEN,
+        tabBarInactiveTintColor: GREEN_MUTED,
         tabBarHideOnKeyboard: true,
         sceneStyle: {
-            backgroundColor: manualTheme === 'light' ? getTailwindColor('base.100') : getTailwindColor('base.dark.100'),
+            backgroundColor: CREAM,
         },
-        // other options: tabBarIcon (notifications), tabBarAccessibilityLabel (accessibility (out of scope))
         tabBarStyle: {
-            backgroundColor: manualTheme === 'light'
-                ? getTailwindColor('surface.nav')
-                : getTailwindColor('primary.400'),
+            backgroundColor: CREAM,
             height: isIOS ? 62 : 70,
             paddingTop: isIOS ? 6 : 4,
             paddingBottom: isIOS ? 6 : 8,
-            borderTopWidth: 0,
-            borderTopColor: 'transparent',
-            borderLeftWidth: 0,
-            borderRightWidth: 0,
-            borderBottomWidth: 0,
-            borderColor: 'transparent',
+            borderTopWidth: 1,
+            borderTopColor: '#e2ece2',
             elevation: 0,
             shadowOpacity: 0,
-            shadowRadius: 0,
-            shadowOffset: { width: 0, height: 0 },
         },
         tabBarLabelStyle: {
             fontSize: 12,
             fontWeight: '600',
             marginTop: isIOS ? 0 : 2,
         },
-        screenOptions: {
-            animation: 'shift', //doesnt seem to work
-        },
     };
 
     if (userType === 'chef') return (
-        <View className="bg-base-100 dark:bg-base-dark-100 flex-1">
+        <View style={{ flex: 1, backgroundColor: CREAM }}>
             <Modal
                 visible={bookings.length > 0}
                 animationType="fade"
                 transparent={true}
             >
-                <View className='bg-black/50 h-full flex items-center justify-center'>
+                <View style={{ backgroundColor: 'rgba(0,0,0,0.5)', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                     {bookings.length > 0 &&
                         <OrderConfirmationModal
                             key={bookings[0].booking_id}
@@ -120,58 +97,39 @@ export default function TabLayout() {
                     name="BookingsScreen"
                     options={{
                         title: 'Bookings',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="calendar" size={iconSize} color={color} />,
-                        ...TransitionPresets.ShiftTransition,
-
+                        tabBarIcon: ({ color }) => <Octicons name="calendar" size={iconSize} color={color} />,
                     }}
                 />
-
                 <Tabs.Screen
                     name="Messages"
                     options={{
                         title: 'Messages',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="comment-discussion" size={iconSize} color={color} />,
+                        tabBarIcon: ({ color }) => <Octicons name="comment-discussion" size={iconSize} color={color} />,
                         tabBarBadge: 5,
-                        tabBarBadgeStyle: {
-                            backgroundColor: 'red',
-                            color: '#ffffff',
-                            fontSize: 10,
-                        },
-                        ...TransitionPresets.ShiftTransition,
+                        tabBarBadgeStyle: { backgroundColor: '#ef4444', color: '#ffffff', fontSize: 10 },
                     }}
                 />
-
                 <Tabs.Screen
                     name="Profile"
                     options={{
                         title: 'Profile',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="person" size={iconSize} color={color} />,
-                        ...TransitionPresets.ShiftTransition,
+                        tabBarIcon: ({ color }) => <Octicons name="person" size={iconSize} color={color} />,
                     }}
                 />
-
-                <Tabs.Screen
-                    name="SearchScreen"
-                    options={{
-                        href: null,
-                    }}
-                />
+                <Tabs.Screen name="SearchScreen" options={{ href: null }} />
             </Tabs>
         </View>
     );
 
     return (
-        <View className="bg-base-100 dark:bg-base-dark-100 flex-1">
+        <View style={{ flex: 1, backgroundColor: CREAM }}>
             <Modal
                 visible={bookings.length > 0}
                 animationType="fade"
                 transparent={true}
             >
-                <View className='bg-black/50 h-full flex items-center justify-center'>
-                    {bookings.length > 0 && 
+                <View style={{ backgroundColor: 'rgba(0,0,0,0.5)', flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                    {bookings.length > 0 &&
                         <BookingReviewModal
                             key={bookings[0].booking_id}
                             onClose={() => setBookings(bookings.filter(b => b.booking_id !== bookings[0].booking_id))}
@@ -188,48 +146,30 @@ export default function TabLayout() {
                     options={{
                         href: 'SearchScreen',
                         title: 'Search',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="search" size={iconSize} color={color} />,
-                        ...TransitionPresets.ShiftTransition,
-
+                        tabBarIcon: ({ color }) => <Octicons name="search" size={iconSize} color={color} />,
                     }}
                 />
-
                 <Tabs.Screen
                     name="BookingsScreen"
                     options={{
                         title: 'Bookings',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="calendar" size={iconSize} color={color} />,
-                        ...TransitionPresets.ShiftTransition,
-
+                        tabBarIcon: ({ color }) => <Octicons name="calendar" size={iconSize} color={color} />,
                     }}
                 />
-
                 <Tabs.Screen
                     name="Messages"
                     options={{
                         title: 'Messages',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="comment-discussion" size={iconSize} color={color} />,
+                        tabBarIcon: ({ color }) => <Octicons name="comment-discussion" size={iconSize} color={color} />,
                         tabBarBadge: 5,
-                        tabBarBadgeStyle: {
-                            backgroundColor: 'red',
-                            color: '#ffffff',
-                            fontSize: 10,
-                        },
-                        ...TransitionPresets.ShiftTransition,
+                        tabBarBadgeStyle: { backgroundColor: '#ef4444', color: '#ffffff', fontSize: 10 },
                     }}
                 />
-
                 <Tabs.Screen
                     name="Profile"
                     options={{
                         title: 'Profile',
-                        tabBarIcon: ({ color }) =>
-                            <Octicons name="person" size={iconSize} color={color} />,
-                        ...TransitionPresets.ShiftTransition,
-
+                        tabBarIcon: ({ color }) => <Octicons name="person" size={iconSize} color={color} />,
                     }}
                 />
             </Tabs>

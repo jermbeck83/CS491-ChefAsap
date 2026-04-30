@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import Octicons from '@expo/vector-icons/Octicons';
 import Button from './Button';
 import Input from './Input';
@@ -8,95 +8,38 @@ import Stepper from './Stepper';
 import LocationInput from './LocationInput';
 import getEnvVars from '../../config';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../providers/ThemeProvider';
-import { getTailwindColor } from '../utils/getTailwindColor';
 
-const HEADER_BANNER_BOTTOM_RADIUS = 28;
-
-const greenBannerBaseStyle = {
-    width: '100%',
-    borderWidth: 0,
-};
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
 
 export default function SearchBarComponent({ formData, setFormData, handleSearch }) {
     const [recentSearches, setRecentSearches] = useState([]);
     const [isDropVisible, setIsDropVisible] = useState(false);
     const { apiUrl } = getEnvVars();
     const { token, profileId } = useAuth();
-    const { manualTheme } = useTheme();
 
-    const greenHeaderStyle = useMemo(() => {
-        const backgroundColor =
-            manualTheme === 'light'
-                ? getTailwindColor('primary.300')
-                : getTailwindColor('dark.300');
-
-        return [
-            greenBannerBaseStyle,
-            {
-                backgroundColor,
-                borderBottomLeftRadius: HEADER_BANNER_BOTTOM_RADIUS,
-                borderBottomRightRadius: HEADER_BANNER_BOTTOM_RADIUS,
-            },
-            Platform.select({
-                ios: {
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 3 },
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                },
-                android: {
-                    elevation: 3,
-                },
-                default: {},
-            }),
-        ];
-    }, [manualTheme]);
-
-    // Fetch recent searches from API
     useEffect(() => {
         const fetchRecentSearches = async () => {
             if (!profileId || !token) return;
-
             try {
                 const url = `${apiUrl}/search/recent/${profileId}?limit=3`;
                 const response = await fetch(url, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 });
-
                 const data = await response.json();
-
                 if (response.ok && data.success) {
-                    // Transform API data to match the expected format
-                    const formattedSearches = data.recent_searches.map(search => {
-                        let query = search.search_query || search.cuisine || 'Recent search';
-                        let type = 'chef';
-                        
-                        if (search.cuisine && !search.search_query) {
-                            type = 'cuisine';
-                        } else if (search.search_query) {
-                            // Try to guess the type based on the query
-                            type = 'chef';
-                        }
-
-                        return { 
-                            query, 
-                            type,
-                            fullData: search // Keep full search data for re-executing search
-                        };
-                    });
-
+                    const formattedSearches = data.recent_searches.map(search => ({
+                        query: search.search_query || search.cuisine || 'Recent search',
+                        type: search.cuisine && !search.search_query ? 'cuisine' : 'chef',
+                        fullData: search
+                    }));
                     setRecentSearches(formattedSearches);
                 }
             } catch (err) {
                 console.error('Failed to fetch recent searches:', err);
             }
         };
-
         fetchRecentSearches();
     }, [profileId, token, apiUrl]);
 
@@ -117,14 +60,9 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
         { label: "Chef", value: "chef" },
         { label: "Cuisine", value: "cuisine" },
         { label: "Dish", value: "dish" },
-    ]
-
-    const handlePrimarySearchChange = (value) => {
-        setFormData(prev => ({ ...prev, searchQuery: value }));
-    };
+    ];
 
     const handleHistoryClick = (item) => {
-        // Re-apply the full search parameters from history
         if (item.fullData) {
             setFormData(prev => ({
                 ...prev,
@@ -141,14 +79,13 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
                 locationPostalCode: '',
             }));
         } else {
-            // Fallback to just setting query and type
             setFormData(prev => ({ ...prev, searchQuery: item.query, searchType: item.type }));
         }
     };
 
     const renderDropView = () => (
-        <View className="w-full bg-white dark:bg-base-dark-100 rounded-2xl p-3 pb-0">
-            <View className="flex-row">
+        <View style={s.dropView}>
+            <View style={{ flexDirection: 'row' }}>
                 <CustomPicker
                     label="Search By"
                     prompt="Select what to search by"
@@ -161,14 +98,11 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
                     label="Search Radius"
                     value={formData.radius}
                     onValueChange={(newValue) => setFormData(prev => ({ ...prev, radius: newValue }))}
-                    min={5}
-                    max={30}
-                    step={5}
+                    min={5} max={30} step={5}
                     labelStyle='text-center'
                 />
             </View>
-
-            <View className="flex-row">
+            <View style={{ flexDirection: 'row' }}>
                 <CustomPicker
                     label="Meal Timing"
                     prompt="Select Mealtime"
@@ -186,57 +120,52 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
                     labelStyle='text-center'
                 />
             </View>
-            
-            <View>
-                <Text className="text-sm font-semibold text-primary-400 mb-1 mt-4 text-center dark:text-dark-400">Recent Searches</Text>
+            <View style={{ marginTop: 8 }}>
+                <Text style={s.recentLabel}>Recent Searches</Text>
                 {recentSearches.length > 0 ? (
-                    <View className="rounded-lg border border-gray-100">
+                    <View style={s.recentList}>
                         {recentSearches.map((item, index) => (
-                            <TouchableOpacity key={index} onPress={() => handleHistoryClick(item)} className="p-2 border-b border-gray-100 rounded-lg">
-                                <Text className="text-base text-warm-gray">{item.query} ({item.type})</Text>
+                            <TouchableOpacity
+                                key={index}
+                                onPress={() => handleHistoryClick(item)}
+                                style={[s.recentItem, index < recentSearches.length - 1 && s.recentItemBorder]}
+                            >
+                                <Octicons name="search" size={14} color="#8aab8a" style={{ marginRight: 8 }} />
+                                <Text style={s.recentItemText}>{item.query}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>
                 ) : (
-                    <View className="p-3 rounded-lg border border-gray-100">
-                        <Text className="text-sm text-gray-500 text-center">No recent searches yet</Text>
-                    </View>
+                    <Text style={s.recentEmpty}>No recent searches yet</Text>
                 )}
             </View>
-
-            <View>
-                <Button
-                    icon='chevron-up'
-                    onPress={() => setIsDropVisible(false)}
-                    style='secondary'
-                    customClasses='mt-1 bg-transparent border-transparent shadow-none'
-                />
-            </View>
+            <TouchableOpacity onPress={() => setIsDropVisible(false)} style={s.collapseBtn}>
+                <Octicons name="chevron-up" size={20} color="#8aab8a" />
+            </TouchableOpacity>
         </View>
     );
 
-    const HEADER_ROW =
-        'bg-white dark:bg-base-dark-100 rounded-2xl min-h-[52px] px-3';
-
     return (
-        <View className="w-full flex-1 pb-4 overflow-visible">
-            <View className="w-full px-4 pt-3 pb-6 gap-3" style={greenHeaderStyle}>
-                <View className={`flex-row items-center ${HEADER_ROW} gap-2`}>
-                    <Octicons name="search" size={20} color="#9ca3af" />
+        <View style={s.wrapper}>
+            <View style={s.banner}>
+                {/* Search row */}
+                <View style={s.searchRow}>
+                    <Octicons name="search" size={18} color="#aab4a8" style={{ marginRight: 8 }} />
                     <Input
                         placeholder="Search by name, cuisine, or event type…"
                         value={formData.searchQuery}
-                        onChangeText={handlePrimarySearchChange}
+                        onChangeText={(v) => setFormData(prev => ({ ...prev, searchQuery: v }))}
                         onFocus={() => setIsDropVisible(true)}
                         containerClasses="flex-1 mb-0 min-w-0"
                         embedded
                     />
-                    <Button
-                        icon="search"
+                    <TouchableOpacity
                         onPress={() => { handleSearch(); setIsDropVisible(false); }}
-                        style="accent"
-                        customClasses="rounded-xl w-11 h-11 m-0 shrink-0"
-                    />
+                        style={s.searchBtn}
+                        activeOpacity={0.85}
+                    >
+                        <Octicons name="search" size={18} color="#fff" />
+                    </TouchableOpacity>
                 </View>
 
                 {isDropVisible ? renderDropView() : null}
@@ -246,3 +175,61 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
         </View>
     );
 }
+
+const s = StyleSheet.create({
+    wrapper: { width: '100%', paddingBottom: 16 },
+    banner: {
+        width: '100%',
+        backgroundColor: '#fff',
+        borderRadius: 20,
+        padding: 16,
+        gap: 10,
+        borderWidth: 1,
+        borderColor: '#e2ece2',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    searchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f8faf8',
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: '#dde8dd',
+        paddingHorizontal: 12,
+        minHeight: 48,
+    },
+    searchBtn: {
+        width: 36, height: 36,
+        borderRadius: 10,
+        backgroundColor: '#2d6a4f',
+        alignItems: 'center', justifyContent: 'center',
+        marginLeft: 8,
+    },
+    dropView: {
+        backgroundColor: '#fff',
+        borderRadius: 14,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#e2ece2',
+    },
+    recentLabel: {
+        fontSize: 12, fontWeight: '700', color: '#8aab8a',
+        letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 8,
+    },
+    recentList: {
+        borderRadius: 10, borderWidth: 1, borderColor: '#e2ece2', overflow: 'hidden',
+    },
+    recentItem: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 12, paddingVertical: 10,
+        backgroundColor: '#fff',
+    },
+    recentItemBorder: { borderBottomWidth: 1, borderBottomColor: '#f0f5f0' },
+    recentItemText: { fontSize: 14, color: '#4a7c59' },
+    recentEmpty: { fontSize: 13, color: '#aab4a8', textAlign: 'center', padding: 12 },
+    collapseBtn: { alignItems: 'center', paddingTop: 8 },
+});

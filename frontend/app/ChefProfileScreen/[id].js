@@ -1,61 +1,54 @@
 import React, { useEffect, useState } from 'react';
-import { useLocalSearchParams, Stack } from 'expo-router';
-import { ScrollView, Text, Alert, View, TouchableOpacity, TextInput, Image } from "react-native";
+import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { ScrollView, Text, Alert, View, TouchableOpacity, Image, StyleSheet } from "react-native";
 import { Octicons } from '@expo/vector-icons';
 
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
 
 import LoadingIcon from "../components/LoadingIcon";
-import Button from "../components/Button";
 import ProfilePicture from "../components/ProfilePicture";
-import Card from "../components/Card";
 import RatingsDisplay from '../components/RatingsDisplay';
 import TagsBox from '../components/TagsBox';
-import { useRouter } from 'expo-router';
 
-const featuredDishComponent = (item, apiUrl) => (
-    <View key={item.id} className="bg-base-100 dark:bg-base-dark-100 flex p-4 pb-2 rounded-xl shadow-sm shadow-primary-500 mr-4" >
-        {item.photo_url ? (
-            <Image
-                source={{ uri: `${apiUrl}${item.photo_url}` }}
-                className="h-[200px] w-[200px] rounded-lg"
-                resizeMode="cover"
-            />
-        ) : (
-            <View className="bg-white h-[200px] w-[200px] justify-center rounded-lg">
-                <Text className="text-lg text-center text-primary-400 dark:text-dark-400">NO IMAGE</Text>
-            </View>
-        )}
-        <Text className="text-primary-400 text-md font-semibold pt-2 w-[200px] text-center dark:text-dark-400">
-            {item.dish_name}
-        </Text>
-        <Text className="text-primary-400 text-sm pt-1 w-[200px] text-center text-justified dark:text-dark-400">
-            {item.description || 'No description'}
-        </Text>
-        {item.cuisine_type && (
-            <Text className="text-primary-400 text-xs pt-1 w-[200px] text-center dark:text-dark-400">
-                {item.cuisine_type}
-            </Text>
-        )}
-        {item.price && (
-            <Text className="text-primary-400 text-lg font-bold pt-2 w-[200px] text-center dark:text-dark-400">
-                ${item.price.toFixed(2)}
-            </Text>
-        )}
-        {item.prep_time && (
-            <Text className="text-primary-400 text-xs pt-1 w-[200px] text-center dark:text-dark-400">
-                Prep time: {item.prep_time} min
-            </Text>
-        )}
-    </View>
-);
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+const BG = '#fefce8';
+const BORDER = '#e2ece2';
+const TEXT = '#1a2e1a';
+const TEXT_MID = '#4a7c59';
+const TEXT_SOFT = '#8aab8a';
+
+const getImageSource = (photoUrl, apiUrl) => {
+    if (!photoUrl) return null;
+    if (photoUrl.startsWith('data:')) return { uri: photoUrl };
+    return { uri: `${apiUrl}${photoUrl}` };
+};
+
+const FeaturedDishCard = ({ item, apiUrl }) => {
+    const imgSrc = getImageSource(item.photo_url, apiUrl);
+    return (
+        <View style={s.dishCard}>
+            {imgSrc ? (
+                <Image source={imgSrc} style={s.dishImage} resizeMode="cover" />
+            ) : (
+                <View style={[s.dishImage, s.dishImageEmpty]}>
+                    <Text style={s.dishImageEmptyText}>NO IMAGE</Text>
+                </View>
+            )}
+            <Text style={s.dishName}>{item.dish_name}</Text>
+            {item.description ? <Text style={s.dishDesc}>{item.description}</Text> : null}
+            {item.price ? <Text style={s.dishPrice}>${item.price.toFixed(2)}</Text> : null}
+            {item.prep_time ? <Text style={s.dishMeta}>Prep time: {item.prep_time} min</Text> : null}
+        </View>
+    );
+};
 
 export default function ChefProfileScreen() {
     const { id, distance } = useLocalSearchParams();
-
     const { token, userId, profileId, userType } = useAuth();
     const { apiUrl } = getEnvVars();
+    const router = useRouter();
 
     const [chefData, setChefData] = useState(null);
     const [featuredItems, setFeaturedItems] = useState([]);
@@ -66,161 +59,77 @@ export default function ChefProfileScreen() {
     const [isFavorited, setIsFavorited] = useState(false);
     const [updatingFavoriteStatus, setUpdatingFavoriteStatus] = useState(false);
 
-    const router = useRouter();
-
     useEffect(() => {
         if (!id) return;
-
         const chefId = parseInt(id, 10);
-
-        console.log(`Fetching profile data for Chef ID: ${chefId}`);
-
         const fetchData = async () => {
-            if (!chefId) return;
-
             setLoading(true);
             setError(null);
-
             try {
-                // Fetch chef profile
-                const profileUrl = `${apiUrl}/profile/chef/${chefId}/public`;
-                const profileResponse = await fetch(profileUrl, {
+                const profileResponse = await fetch(`${apiUrl}/profile/chef/${chefId}/public`, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 });
-
                 const profileData = await profileResponse.json();
-
                 if (profileResponse.ok) {
                     setChefData(profileData.profile);
                     setChefCuisines(profileData.profile.cuisines || []);
                     setMealTimings(profileData.profile.meal_timings || ['Breakfast', 'Lunch', 'Dinner']);
                 } else {
                     setError(profileData.error || 'Failed to load profile.');
-                    Alert.alert('Error', profileData.error || 'Failed to load profile.');
                 }
 
-                // Fetch featured dishes (max 3 dishes marked as featured by chef)
-                const featuredUrl = `${apiUrl}/api/menu/chef/${chefId}/featured`;
-                const featuredResponse = await fetch(featuredUrl, {
+                const featuredResponse = await fetch(`${apiUrl}/api/menu/chef/${chefId}/featured`, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 });
-
                 const featuredData = await featuredResponse.json();
+                if (featuredResponse.ok) setFeaturedItems(featuredData.featured_items || []);
 
-                if (featuredResponse.ok) {
-                    setFeaturedItems(featuredData.featured_items || []);
-                } else {
-                    setFeaturedItems([]);
-                }
-
-                const faveURL = `${apiUrl}/booking/customer/${profileId}/favorite-chefs/${chefId}`;
-                const faveResponse = await fetch(faveURL, {
+                const faveResponse = await fetch(`${apiUrl}/booking/customer/${profileId}/favorite-chefs/${chefId}`, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 });
-
                 const faveData = await faveResponse.json();
+                if (faveResponse.ok) setIsFavorited(faveData.is_favorited || false);
 
-                if (faveResponse.ok) {
-                    setIsFavorited(faveData.is_favorited || false);
-                } else {
-                    setIsFavorited(false);
-                }
-
-                // Save chef view record (only for customers)
                 if (userType === 'customer' && profileId) {
-                    try {
-                        const viewUrl = `${apiUrl}/search/viewed-chefs/${profileId}`;
-                        await fetch(viewUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${token}`,
-                            },
-                            body: JSON.stringify({ chef_id: chefId }),
-                        });
-                        console.log(`Saved view record for chef ${chefId}`);
-                    } catch (viewError) {
-                        console.error('Failed to save view record:', viewError);
-                        // Don't show error to user, just log it
-                    }
+                    await fetch(`${apiUrl}/search/viewed-chefs/${profileId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ chef_id: chefId }),
+                    }).catch(() => {});
                 }
-
             } catch (err) {
                 setError('Network error. Could not connect to API.');
-                console.error('Fetch error:', err);
             } finally {
                 setLoading(false);
             }
         };
-
         fetchData();
-
     }, [id, apiUrl, token]);
 
     const handleFavoriting = async () => {
         const chefId = parseInt(id, 10);
-
-        if (!isFavorited) {
-            try {
-                setUpdatingFavoriteStatus(true);
-                await fetch(`${apiUrl}/booking/customer/${profileId}/favorite-chefs/${chefId}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-            } catch (err) {
-                Alert.alert('Error', 'Network error. Could not favorite chef.');
-                console.error('Favorite chef error:', err);
-            } finally {
-                setIsFavorited(true);
-                setUpdatingFavoriteStatus(false);
-            }
-        } else {
-            try {
-                setUpdatingFavoriteStatus(true);
-                await fetch(`${apiUrl}/booking/customer/${profileId}/favorite-chefs/${chefId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`,
-                    },
-                });
-            } catch (err) {
-                Alert.alert('Error', 'Network error. Could not unfavorite chef.');
-                console.error('Unfavorite chef error:', err);
-            } finally {
-                setIsFavorited(false);
-                setUpdatingFavoriteStatus(false);
-            }
+        setUpdatingFavoriteStatus(true);
+        try {
+            await fetch(`${apiUrl}/booking/customer/${profileId}/favorite-chefs/${chefId}`, {
+                method: isFavorited ? 'DELETE' : 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            });
+            setIsFavorited(!isFavorited);
+        } catch (err) {
+            Alert.alert('Error', 'Could not update favorite status.');
+        } finally {
+            setUpdatingFavoriteStatus(false);
         }
     };
 
     const handleChatPress = () => {
-        if (userType !== 'customer') {
-            Alert.alert('Error', 'Only customers can message chefs.');
-            return;
-        }
-
+        if (userType !== 'customer') { Alert.alert('Error', 'Only customers can message chefs.'); return; }
         router.push({
             pathname: '/ChatScreen',
-            params: {
-                otherUserId: id,
-                otherUserName: `${chefData?.first_name} ${chefData?.last_name}`,
-            }
+            params: { otherUserId: id, otherUserName: `${chefData?.first_name} ${chefData?.last_name}` },
         });
     };
 
@@ -228,7 +137,7 @@ export default function ChefProfileScreen() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 justify-center items-center bg-base-100 dark:bg-base-dark-100">
+                <View style={[s.screen, { justifyContent: 'center', alignItems: 'center' }]}>
                     <LoadingIcon message="Loading Chef Profile..." />
                 </View>
             </>
@@ -238,123 +147,219 @@ export default function ChefProfileScreen() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false }} />
-            <ScrollView className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5">
-                {/*console.log(JSON.stringify(chefData))*/}
-                <Card
-                    title={`${chefData?.first_name} ${chefData?.last_name}`}
-                    customHeader='justify-center'
-                    customHeaderText='text-3xl'
-                >
-                    <ProfilePicture photoUrl={chefData?.photo_url} firstName={chefData?.first_name} lastName={chefData?.last_name} />
-                    <RatingsDisplay rating={chefData?.average_rating} />
-                    <View className='flex-row items-center justify-center'>
-                        <Text className="text-lg text-center text-primary-400 pb-2 dark:text-dark-400">
-                            {chefData?.total_reviews} Total Reviews
-                        </Text>
-                        <Button
-                            icon='cross-reference'
-                            base='link'
-                            style='transparent'
-                            customClasses='m-0 px-0 py-0 pl-2 pb-4'
-                            onPress={() => alert("Reviews Placeholder")}
-                        />
-                    </View>
-                    <Text className="text-sm text-center text-primary-400 pt-2 border-t border-primary-200 dark:text-dark-400 dark:border-dark-200">Serving Since: {chefData.member_since}</Text>
+            <ScrollView style={s.screen} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
 
-                    <Button
+                {/* Hero Card */}
+                <View style={s.card}>
+                    {/* Favorite button */}
+                    <TouchableOpacity
                         onPress={handleFavoriting}
-                        icon={updatingFavoriteStatus ? 'sync' : isFavorited ? 'heart-fill' : 'heart'}
-                        style="accent"
-                        customClasses="absolute -top-[62px] -right-2 z-10 p-3 rounded-full pl-3"
                         disabled={updatingFavoriteStatus}
-                    />
-                </Card>
+                        style={s.favoriteBtn}
+                    >
+                        <Octicons
+                            name={updatingFavoriteStatus ? 'sync' : isFavorited ? 'heart-fill' : 'heart'}
+                            size={20}
+                            color={isFavorited ? '#ef4444' : GREEN}
+                        />
+                    </TouchableOpacity>
 
-                <Card>
-                    <Text className="text-lg text-center text-primary-400 font-semibold dark:text-dark-400">Located in: {chefData.public_location} </Text>
-                    {distance && <Text className="text-lg text-center text-primary-400 dark:text-dark-400">Distance from you: {distance} miles </Text>}
-                </Card>
-
-                <Card>
-                    {/* Meal Timings */}
-                    {mealTimings.length > 0 && (
-                        <View className="mb-3">
-                            <Text className="text-md text-primary-400 font-semibold mb-2 dark:text-dark-400">
-                                Serves:
-                            </Text>
-                            <Text className="text-md text-primary-400 mb-2 dark:text-dark-400 text-center">
-                                {mealTimings?.join(', ')}
-                            </Text>
-                        </View>
-                    )}
-
-                    {/* Cuisines */}
-                    <View>
-                        <Text className="text-md text-primary-400 font-semibold mb-2 dark:text-dark-400">
-                            Cuisine Specialties:
+                    <View style={s.profileCenter}>
+                        <ProfilePicture
+                            photoUrl={chefData?.photo_url}
+                            firstName={chefData?.first_name}
+                            lastName={chefData?.last_name}
+                        />
+                        <Text style={s.chefName}>
+                            {chefData?.first_name} {chefData?.last_name}
                         </Text>
-                        {chefCuisines.length > 0 ? (
-                            <TagsBox words={chefCuisines} theme='light' />
-                        ) : (
-                            <Text className="text-md text-center text-gray-500 dark:text-gray-400">
-                                No cuisine specialties listed
-                            </Text>
+                        <RatingsDisplay rating={chefData?.average_rating} />
+                        <Text style={s.reviewCount}>{chefData?.total_reviews} Total Reviews</Text>
+                        <View style={s.memberRow}>
+                            <Text style={s.memberText}>Serving Since: {chefData?.member_since}</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* Location Card */}
+                <View style={s.card}>
+                    <View style={s.sectionBody}>
+                        <View style={s.infoRow}>
+                            <Octicons name="location" size={16} color={GREEN} />
+                            <Text style={s.infoText}>Located in: {chefData?.public_location}</Text>
+                        </View>
+                        {distance && (
+                            <View style={[s.infoRow, { marginTop: 6 }]}>
+                                <Octicons name="arrow-both" size={16} color={TEXT_SOFT} />
+                                <Text style={s.infoTextSoft}>Distance from you: {distance} miles</Text>
+                            </View>
                         )}
                     </View>
-                </Card>
+                </View>
 
-                <Card
-                    title="About"
-                    customHeader='justify-center'
-                    customHeaderText='text-xl'
-                >
-                    <Text className="text-lg text-center text-primary-400 text-pretty dark:text-dark-400">
-                        {chefData?.description || 'No description available'}
-                    </Text>
-                </Card>
+                {/* Serves & Cuisines */}
+                <View style={s.card}>
+                    <View style={s.sectionBody}>
+                        {mealTimings.length > 0 && (
+                            <View style={s.detailBlock}>
+                                <Text style={s.detailLabel}>Serves:</Text>
+                                <Text style={s.detailValue}>{mealTimings.join(', ')}</Text>
+                            </View>
+                        )}
+                        <View style={[s.detailBlock, { marginBottom: 0 }]}>
+                            <Text style={s.detailLabel}>Cuisine Specialties:</Text>
+                            {chefCuisines.length > 0 ? (
+                                <TagsBox words={chefCuisines} theme='light' />
+                            ) : (
+                                <Text style={s.emptyText}>No cuisine specialties listed</Text>
+                            )}
+                        </View>
+                    </View>
+                </View>
 
-                <Card
-                    title="Featured Dishes"
-                    customHeader='justify-center'
-                    customHeaderText='text-xl'
-                    isScrollable={true}
-                    scrollDirection='horizontal'
-                    customCard="py-1"
-                >
-                    {loading ? (
-                        <Text className="text-primary-400 text-center py-4 dark:text-dark-400">
-                            Loading featured dishes...
+                {/* About */}
+                <View style={s.card}>
+                    <View style={s.sectionHeader}>
+                        <Text style={s.sectionTitle}>About</Text>
+                    </View>
+                    <View style={s.sectionBody}>
+                        <Text style={s.aboutText}>
+                            {chefData?.description || 'No description available'}
                         </Text>
-                    ) : featuredItems.length > 0 ? (
-                        featuredItems.map(item => featuredDishComponent(item, apiUrl))
-                    ) : (
-                        <Text className="text-primary-400 text-center py-4 dark:text-dark-400">
-                            No featured dishes available
-                        </Text>
-                    )}
-                </Card>
+                    </View>
+                </View>
 
-                <Button
-                    title="View Menu"
-                    style="primary"
-                    customClasses="min-w-[60%]"
-                    href={`/ChefMenu/${id}`}
-                />
-                <Button
-                    title="Chat"
-                    style="primary"
-                    customClasses='min-w-[60%]'
-                    //href={`/ChatScreen?chef_id=${id}`}
-                    onPress={handleChatPress}
-                />
-                <Button
-                    title="← Return"
-                    style="secondary"
-                    onPress={() => router.back()}
-                    customClasses="min-w-[60%]"
-                />
-                <View className="h-8" />
+                {/* Featured Dishes */}
+                <View style={s.card}>
+                    <View style={s.sectionHeader}>
+                        <Text style={s.sectionTitle}>Featured Dishes</Text>
+                    </View>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={{ padding: 12, gap: 12 }}
+                    >
+                        {featuredItems.length > 0 ? (
+                            featuredItems.map(item => (
+                                <FeaturedDishCard key={item.id} item={item} apiUrl={apiUrl} />
+                            ))
+                        ) : (
+                            <Text style={[s.emptyText, { padding: 8 }]}>No featured dishes available</Text>
+                        )}
+                    </ScrollView>
+                </View>
+
+                {/* Actions */}
+                <TouchableOpacity style={s.primaryBtn} onPress={() => router.push(`/ChefMenu/${id}`)} activeOpacity={0.85}>
+                    <Text style={s.primaryBtnText}>View Menu</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[s.primaryBtn, { marginTop: 10 }]} onPress={handleChatPress} activeOpacity={0.85}>
+                    <Octicons name="comment" size={16} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={s.primaryBtnText}>Chat</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[s.secondaryBtn, { marginTop: 10 }]} onPress={() => router.back()} activeOpacity={0.85}>
+                    <Text style={s.secondaryBtnText}>← Return</Text>
+                </TouchableOpacity>
+
             </ScrollView>
         </>
     );
 }
+
+const s = StyleSheet.create({
+    screen: { flex: 1, backgroundColor: BG },
+    card: {
+        backgroundColor: '#fff',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: BORDER,
+        marginBottom: 16,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 6,
+        elevation: 2,
+    },
+    favoriteBtn: {
+        position: 'absolute', top: 12, right: 12, zIndex: 10,
+        width: 38, height: 38, borderRadius: 19,
+        backgroundColor: GREEN_LIGHT,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    profileCenter: {
+        alignItems: 'center',
+        padding: 20, paddingTop: 24,
+    },
+    chefName: {
+        fontSize: 22, fontWeight: '800', color: TEXT,
+        letterSpacing: -0.5, marginTop: 12, marginBottom: 4,
+    },
+    reviewCount: { fontSize: 13, color: TEXT_SOFT, marginTop: 2 },
+    memberRow: {
+        marginTop: 12, paddingTop: 12,
+        borderTopWidth: 1, borderTopColor: BORDER,
+        width: '100%', alignItems: 'center',
+    },
+    memberText: { fontSize: 13, color: TEXT_SOFT },
+    sectionHeader: {
+        paddingHorizontal: 16, paddingVertical: 14,
+        borderBottomWidth: 1, borderBottomColor: BORDER,
+    },
+    sectionTitle: { fontSize: 16, fontWeight: '700', color: TEXT },
+    sectionBody: { padding: 16 },
+    infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    infoText: { fontSize: 15, fontWeight: '600', color: TEXT_MID },
+    infoTextSoft: { fontSize: 14, color: TEXT_SOFT },
+    detailBlock: { marginBottom: 14 },
+    detailLabel: {
+        fontSize: 13, fontWeight: '700', color: TEXT_MID,
+        textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6,
+    },
+    detailValue: { fontSize: 15, color: TEXT },
+    aboutText: { fontSize: 15, color: TEXT_MID, lineHeight: 22, textAlign: 'center' },
+    emptyText: { fontSize: 14, color: TEXT_SOFT },
+    dishCard: {
+        width: 180, backgroundColor: '#f8faf8',
+        borderRadius: 14, overflow: 'hidden',
+        borderWidth: 1, borderColor: BORDER,
+    },
+    dishImage: { width: 180, height: 180 },
+    dishImageEmpty: {
+        backgroundColor: GREEN_LIGHT,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    dishImageEmptyText: { color: GREEN, fontWeight: '600', fontSize: 13 },
+    dishName: {
+        fontSize: 14, fontWeight: '700', color: TEXT,
+        textAlign: 'center', paddingHorizontal: 10, paddingTop: 10,
+    },
+    dishDesc: {
+        fontSize: 12, color: TEXT_SOFT,
+        textAlign: 'center', paddingHorizontal: 10, paddingTop: 4,
+    },
+    dishPrice: {
+        fontSize: 16, fontWeight: '800', color: GREEN,
+        textAlign: 'center', paddingTop: 6,
+    },
+    dishMeta: {
+        fontSize: 11, color: TEXT_SOFT,
+        textAlign: 'center', paddingBottom: 10,
+    },
+    primaryBtn: {
+        backgroundColor: GREEN, paddingVertical: 16,
+        borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'row',
+        shadowColor: GREEN, shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+    },
+    primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.3 },
+    secondaryBtn: {
+        paddingVertical: 15, borderRadius: 14,
+        alignItems: 'center', borderWidth: 1.5,
+        borderColor: BORDER, backgroundColor: '#fff',
+    },
+    secondaryBtnText: { color: TEXT_MID, fontSize: 15, fontWeight: '600' },
+});
