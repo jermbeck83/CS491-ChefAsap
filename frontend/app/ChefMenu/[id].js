@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
-import { ScrollView, Text, Alert, View, Modal, Image, TouchableOpacity, StyleSheet } from "react-native";
+import { ScrollView, Text, Alert, View, Modal, Image, TouchableOpacity, StyleSheet, TextInput } from "react-native";
 import { Octicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 
@@ -23,6 +23,12 @@ const getImageSource = (photoUrl, apiUrl) => {
     if (!photoUrl) return null;
     if (photoUrl.startsWith('data:')) return { uri: photoUrl };
     return { uri: `${apiUrl}${photoUrl}` };
+};
+
+const parseZipFromLocation = (locationText) => {
+    if (!locationText) return '';
+    const match = String(locationText).match(/\b\d{5}\b/);
+    return match ? match[0] : '';
 };
 
 const MenuItemCard = ({ item, onAddToOrder, apiUrl, userType }) => {
@@ -103,6 +109,10 @@ export default function ChefMenu() {
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
     const [paymentProcessing, setPaymentProcessing] = useState(false);
+    const [pricingQuote, setPricingQuote] = useState(null);
+    const [pricingLoading, setPricingLoading] = useState(false);
+    const [eventZip, setEventZip] = useState('');
+    const hasShownSurgeAlertRef = useRef(false);
 
     useEffect(() => {
         if (!id) return;
@@ -168,6 +178,12 @@ export default function ChefMenu() {
 
     useEffect(() => { if (showOrderModal && userType === 'customer') fetchPaymentMethods(); }, [showOrderModal]);
 
+    useEffect(() => {
+        if (chefData?.public_location) {
+            setEventZip(parseZipFromLocation(chefData.public_location));
+        }
+    }, [chefData?.public_location]);
+
     const getMealType = (hour) => {
         if (hour >= 5 && hour < 11) return 'breakfast';
         if (hour >= 11 && hour < 16) return 'lunch';
@@ -179,15 +195,10 @@ export default function ChefMenu() {
         setPaymentProcessing(true);
         try {
             const deliveryDateTime = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
-            const total = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-
-            const paymentResponse = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ customer_id: profileId, amount: total, payment_method_id: selectedPaymentMethod, description: `Booking - ${orderItems.length} items` }),
-            });
-            const paymentData = await paymentResponse.json();
-            if (!paymentResponse.ok) { Alert.alert('Payment Failed', paymentData.error || 'Failed to process payment.'); setPaymentProcessing(false); return; }
+            const baseTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const quoteMultiplier = Number(pricingQuote?.multiplier || 1);
+            const dynamicTotal = Number(pricingQuote?.final_price || baseTotal);
+            const payableTotal = dynamicTotal > 0 ? dynamicTotal : baseTotal;
 
             const bookingResponse = await fetch(`${apiUrl}/booking/create`, {
                 method: 'POST',
@@ -201,7 +212,12 @@ export default function ChefMenu() {
                     booking_time: deliveryDateTime.toTimeString().split(' ')[0].substring(0, 5),
                     produce_supply: 'chef',
                     number_of_people: orderItems.reduce((sum, item) => sum + item.quantity, 0),
-                    special_notes: `Order: ${orderItems.map(i => `${i.dish_name} (x${i.quantity})`).join(', ')}. Total: $${total.toFixed(2)}.`
+                    base_price: Number(baseTotal.toFixed(2)),
+                    dynamic_price: Number(payableTotal.toFixed(2)),
+                    pricing_multiplier: Number(quoteMultiplier.toFixed(2)),
+                    pricing_features: pricingQuote?.features_logged || {},
+                    total_cost: Number(payableTotal.toFixed(2)),
+                    special_notes: `Order: ${orderItems.map(i => `${i.dish_name} (x${i.quantity})`).join(', ')}. Total: $${payableTotal.toFixed(2)}.`
                 }),
             });
             const bookingResult = await bookingResponse.json();
@@ -215,15 +231,81 @@ export default function ChefMenu() {
             const bookChefResult = await bookChefResponse.json();
             if (!bookChefResponse.ok) { Alert.alert('Booking Error', bookChefResult.error || 'Chef booking failed.'); setPaymentProcessing(false); return; }
 
+            const paymentResponse = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ booking_id: bookingResult.booking_id }),
+            });
+            const paymentData = await paymentResponse.json();
+            if (paymentResponse.status === 403) {
+                Alert.alert('Transaction Declined', 'Flagged for suspicious activity. Please contact support.');
+                setPaymentProcessing(false);
+                return;
+            }
+            if (!paymentResponse.ok) { Alert.alert('Payment Failed', paymentData.error || 'Failed to process payment.'); setPaymentProcessing(false); return; }
+
             setShowOrderModal(false);
             setPaymentProcessing(false);
             const selectedCard = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
             Alert.alert('Booking Confirmed! 🎉',
-                `Booking #${bookingResult.booking_id}\nAmount: $${total.toFixed(2)}\nCard: ${selectedCard?.brand?.toUpperCase()} •••• ${selectedCard?.last4}\nDelivery: ${deliveryDateTime.toLocaleString('en-US')}`,
+                `Booking #${bookingResult.booking_id}\nAmount: $${payableTotal.toFixed(2)}\nCard: ${selectedCard?.brand?.toUpperCase()} •••• ${selectedCard?.last4}\nDelivery: ${deliveryDateTime.toLocaleString('en-US')}`,
                 [{ text: 'OK', onPress: () => { setOrderItems([]); setSelectedPaymentMethod(null); } }]
             );
         } catch (error) { Alert.alert('Error', 'Network error.'); setPaymentProcessing(false); }
     };
+
+    const orderTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const quoteFinal = Number(pricingQuote?.final_price || orderTotal);
+    const quoteMultiplier = Number(pricingQuote?.multiplier || 1);
+    const rushFee = Math.max(0, quoteFinal - orderTotal);
+
+    useEffect(() => {
+        if (!showOrderModal || !orderItems.length || !eventZip || !profileId) return;
+
+        const eventDate = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
+        const basePrice = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        if (!basePrice || Number.isNaN(basePrice)) return;
+
+        let isMounted = true;
+        const timeoutId = setTimeout(async () => {
+            setPricingLoading(true);
+            try {
+                const response = await fetch(`${apiUrl}/api/v1/pricing/quote`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({
+                        base_price: Number(basePrice.toFixed(2)),
+                        event_date: eventDate.toISOString(),
+                        location_zip: eventZip,
+                        chef_id: Number(id),
+                        customer_id: profileId,
+                    }),
+                });
+                const data = await response.json();
+                if (!isMounted) return;
+                if (response.ok && data?.quote) {
+                    setPricingQuote(data.quote);
+                    if (Number(data.quote.multiplier) > 1.0 && !hasShownSurgeAlertRef.current) {
+                        hasShownSurgeAlertRef.current = true;
+                        const fee = Math.max(0, Number(data.quote.final_price || basePrice) - basePrice);
+                        Alert.alert('High Demand Pricing', `High Demand: $${fee.toFixed(2)} rush fee applied.`);
+                    }
+                    if (Number(data.quote.multiplier) <= 1.0) {
+                        hasShownSurgeAlertRef.current = false;
+                    }
+                }
+            } catch (_) {
+                // Pricing is best-effort; checkout can still continue at base price.
+            } finally {
+                if (isMounted) setPricingLoading(false);
+            }
+        }, 350);
+
+        return () => {
+            isMounted = false;
+            clearTimeout(timeoutId);
+        };
+    }, [showOrderModal, selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute, eventZip, orderItems, apiUrl, token, id, profileId]);
 
     if (loading) {
         return (
@@ -235,8 +317,6 @@ export default function ChefMenu() {
             </>
         );
     }
-
-    const orderTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     return (
         <>
@@ -352,8 +432,18 @@ export default function ChefMenu() {
                                 <Text style={s.modalSectionLabel}>Booking Summary</Text>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
                                     <Text style={s.modalText}>Items: {orderItems.length}</Text>
-                                    <Text style={[s.modalText, { fontWeight: '700', color: GREEN }]}>${orderTotal.toFixed(2)}</Text>
+                                    <Text style={[s.modalText, { fontWeight: '700', color: GREEN }]}>
+                                        ${quoteFinal.toFixed(2)}
+                                    </Text>
                                 </View>
+                                {quoteMultiplier > 1.0 ? (
+                                    <View style={s.surgeBadge}>
+                                        <Text style={s.surgeBadgeText}>
+                                            High Demand: ${rushFee.toFixed(2)} rush fee applied
+                                        </Text>
+                                    </View>
+                                ) : null}
+                                {pricingLoading ? <Text style={[s.modalText, { marginTop: 6 }]}>Refreshing live quote...</Text> : null}
                             </View>
 
                             {/* Date */}
@@ -399,6 +489,19 @@ export default function ChefMenu() {
                                         </Picker>
                                     </View>
                                 </View>
+                            </View>
+
+                            {/* Event location */}
+                            <View style={s.modalSection}>
+                                <Text style={s.modalSectionLabel}>Event Location ZIP</Text>
+                                <TextInput
+                                    value={eventZip}
+                                    onChangeText={setEventZip}
+                                    placeholder="e.g. 10001"
+                                    keyboardType="number-pad"
+                                    maxLength={5}
+                                    style={s.zipInput}
+                                />
                             </View>
 
                             {/* Payment */}
@@ -549,8 +652,29 @@ const s = StyleSheet.create({
     },
     modalSectionLabel: { fontSize: 13, fontWeight: '700', color: TEXT_MID, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
     modalText: { fontSize: 14, color: TEXT_MID },
+    surgeBadge: {
+        marginTop: 8,
+        backgroundColor: '#fde68a',
+        borderColor: '#f59e0b',
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+    },
+    surgeBadgeText: { fontSize: 12, fontWeight: '700', color: '#92400e' },
     pickerLabel: { fontSize: 11, color: TEXT_SOFT, marginBottom: 2 },
     picker: { backgroundColor: '#fff', borderRadius: 8 },
+    zipInput: {
+        borderWidth: 1,
+        borderColor: BORDER,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        color: TEXT,
+        fontSize: 14,
+        fontWeight: '600',
+    },
     paymentRow: {
         flexDirection: 'row', alignItems: 'center', padding: 10,
         borderRadius: 10, borderWidth: 1, borderColor: BORDER,
