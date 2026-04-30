@@ -361,6 +361,30 @@ export default function ProfileScreen() {
                             ))}
                         </View>
                     </View>
+
+                    {/* Admin Dashboards */}
+                    <View style={s.card}>
+                        <View style={s.sectionHeader}>
+                            <Octicons name="graph" size={18} color={GREEN} style={{ marginRight: 8 }} />
+                            <Text style={s.sectionTitle}>Admin Dashboards</Text>
+                        </View>
+                        <View style={s.sectionBody}>
+                            <TouchableOpacity
+                                style={[s.helpRow, s.helpRowBorder]}
+                                onPress={() => router.push('/AdminUnmetDemand')}
+                            >
+                                <Text style={s.helpText}>Unmet Demand Dashboard</Text>
+                                <Octicons name="chevron-right" size={16} color={TEXT_SOFT} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={s.helpRow}
+                                onPress={() => router.push('/FraudDesk')}
+                            >
+                                <Text style={s.helpText}>Fraud Desk</Text>
+                                <Octicons name="chevron-right" size={16} color={TEXT_SOFT} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </>
             ) : (
                 <>
