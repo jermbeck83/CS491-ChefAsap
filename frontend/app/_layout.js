@@ -2,21 +2,22 @@ import { Stack, useSegments } from 'expo-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { View } from 'react-native';
 import LoadingIcon from './components/LoadingIcon';
-import ThemeProvider from './providers/ThemeProvider';
+import ThemeProvider from './providers/ThemeProvider'; 
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StripeProvider } from '@stripe/stripe-react-native';
 
 import 'react-native-reanimated';
 import { enableScreens } from 'react-native-screens';
+
 import '../global.css';
 
 enableScreens(true);
 SplashScreen.preventAutoHideAsync();
 
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51SRUG9IouaPAsg5LNVeX2dBt5Qm0y0Mci4dz8gTMxsiRqdtXHM0CmiA2M0vUxz6gBa3MbVtCK7NWbWlA38jpNYQC00Wzn9FdNQ';
-const CREAM = '#fefce8';
+// Stripe Publishable Key
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51T6xl4ReDmkGCaoFu8ucjyz1aREa7oE7OjyKSxqOtnVWM6TE4agF20eBfbox6xNEqG70SCgYmO8b91HDhlUJ180900CyJNHk5r';
 
 export default function RootLayout() {
     return (
@@ -38,14 +39,18 @@ function RootStack() {
     const isAuthRoute = segments[0] === '(auth)';
 
     useEffect(() => {
-        if (!isLoading) SplashScreen.hide();
+        if (!isLoading) {
+            SplashScreen.hide();
+        }
     }, [isLoading]);
 
-    if (isLoading) return null;
+    if (isLoading) {
+        return null;
+    }
 
     return (
         <SafeAreaView
-            style={{ flex: 1, backgroundColor: CREAM }}
+            style={{ flex: 1 }}
             edges={isAuthRoute ? [] : ['top', 'bottom']}
         >
             <Stack
@@ -54,18 +59,24 @@ function RootStack() {
                     animation: 'default',
                     gestureEnabled: true,
                     fullScreenGestureEnabled: true,
-                    contentStyle: { backgroundColor: CREAM },
                 }}
             >
                 <Stack.Screen name="(auth)" />
                 <Stack.Screen name="(tabs)" />
+
+                {/*!isAuthenticated ? (
+                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                ) : (
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                )*/}
+                
                 <Stack.Screen
                     name="ChefProfileScreen/[id]"
-                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true, contentStyle: { backgroundColor: CREAM } }}
+                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true }}
                 />
                 <Stack.Screen
                     name="ChefMenu/[id]"
-                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true, contentStyle: { backgroundColor: CREAM } }}
+                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true }}
                 />
             </Stack>
         </SafeAreaView>
