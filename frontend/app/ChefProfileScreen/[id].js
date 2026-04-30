@@ -10,6 +10,7 @@ import LoadingIcon from "../components/LoadingIcon";
 import ProfilePicture from "../components/ProfilePicture";
 import RatingsDisplay from '../components/RatingsDisplay';
 import TagsBox from '../components/TagsBox';
+import { logAppEvent } from '../../utils/analytics';
 
 const GREEN = '#2d6a4f';
 const GREEN_LIGHT = '#d8f3dc';
@@ -99,6 +100,18 @@ export default function ChefProfileScreen() {
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({ chef_id: chefId }),
                     }).catch(() => {});
+                    
+                    console.log('Analytics firing with profileId:', profileId, 'userId:', userId);
+                    logAppEvent({
+                        token,
+                        eventCategory: 'engagement',
+                        eventAction: 'view_chef_profile',
+                        actorId: profileId || userId,
+                        eventData: {
+                            chef_id: chefId,
+                            source: 'chef_profile_screen',
+                        },
+                    });
                 }
             } catch (err) {
                 setError('Network error. Could not connect to API.');
