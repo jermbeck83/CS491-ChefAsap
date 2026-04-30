@@ -11,6 +11,7 @@ import SearchBarComponent from '../components/SearchBar';
 import SearchResultCard from '../components/SearchResultCard';
 import ProfilePicture from '../components/ProfilePicture';
 import RatingsDisplay from '../components/RatingsDisplay';
+import { logAppEvent } from '../../utils/analytics';
 
 const tempChefCard = (
     <View className="flex bg-primary-100 shadow-sm shadow-primary-300 mr-4 rounded-xl border-2 border-primary-400 dark:bg-dark-100 dark:shadow-dark-300 dark:border-dark-400">
@@ -105,6 +106,19 @@ export default function SearchScreen() {
     }, [token, profileId]);
 
     const handleSearch = () => {
+        if (formData.locationPostalCode) {
+            logAppEvent({
+                token,
+                eventCategory: 'search',
+                eventAction: 'search_zip_code',
+                actorId: profileId || userId,
+                eventData: {
+                    zip_code: formData.locationPostalCode,
+                    radius: formData.radius,
+                    search_query: formData.searchQuery || '',
+                },
+            });
+        }
         // Manual search always resets the error ref so user can see new errors
         errorAlertShownRef.current = false;
         fetchSearchResults();
