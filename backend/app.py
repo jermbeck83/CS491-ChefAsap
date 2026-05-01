@@ -107,7 +107,7 @@ def __routes__():
 
 @app.route('/debug/jwt-check')
 def jwt_check():
-    secret = os.environ.get('JWT_SECRET', 'NOT SET')
+    secret = os.environ.get('JWT_SECRET_KEY', 'NOT SET')
     return jsonify({
         'first_10': secret[:10],
         'length': len(secret)
