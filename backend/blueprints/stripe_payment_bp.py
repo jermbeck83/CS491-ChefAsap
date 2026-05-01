@@ -1,3 +1,5 @@
+import token
+
 from flask import Blueprint, request, jsonify
 from database.db_helper import get_db_connection, get_cursor, handle_db_error
 from functools import wraps
@@ -40,13 +42,20 @@ def token_required(f):
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
         
+        print(f">>> SECRET_KEY in use: '{SECRET_KEY[:10]}...'")
+        print(f">>> Token received: '{token[:30]}...'")
+        print(f">>> Token full: '{token}'")  
+
+
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
             current_user_id = data['user_id']
             user_type = data.get('user_type')
         except jwt.ExpiredSignatureError:
+            print(">>> EXPIRED TOKEN")
             return jsonify({'error': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
+            print(f">>> INVALID TOKEN ERROR: {e}")
             return jsonify({'error': 'Invalid token'}), 401
         
         return f(current_user_id, user_type, *args, **kwargs)

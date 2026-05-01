@@ -30,7 +30,7 @@ def validate_password(password):
 auth_bp = Blueprint('auth', __name__)
 bcrypt = Bcrypt()
 
-JWT_SECRET = 'your-secret-key'  
+JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'your-secret-key')
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
@@ -146,6 +146,8 @@ def signup():
         
         print(f'\nNew user signed up - Email: {email}, Type: {user_type}, ID: {user_id}\n')
 
+        print(f">>> Signing with JWT_SECRET: '{JWT_SECRET[:10]}...'")
+
         # Generate JWT token
         token = jwt.encode({
             'user_id': user_id,
@@ -154,6 +156,7 @@ def signup():
             'exp': datetime.utcnow() + timedelta(days=1)
         }, JWT_SECRET, algorithm='HS256')
 
+        print(f">>> Generated token: '{token[:30]}...'")
         return jsonify({
             'message': 'User registered successfully',
             'token': token,

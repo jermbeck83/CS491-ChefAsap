@@ -1,5 +1,11 @@
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from dotenv import load_dotenv
+import os
+
+basedir = os.path.abspath(os.path.dirname(__file__))
+load_dotenv(os.path.join(basedir, '.env'))
+
 from flask_bcrypt import Bcrypt
 from database.config import db_config
 
@@ -24,9 +30,7 @@ from blueprints.dashboard_bp import dashboard_bp
 from blueprints.pricing_bp import pricing_bp
 from blueprints.menu_event_planner_bp import menu_event_planner_bp
 from blueprints.recommendation_bp import recommendation_bp
-
 import socket
-import os
 
 app = Flask(__name__)
 
@@ -34,7 +38,7 @@ app = Flask(__name__)
 def add_cors_headers(response):
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
     return response
 
 app.after_request(add_cors_headers)
