@@ -50,3 +50,4 @@ scikit-learn>=1.2.0
 numpy>=1.24.0
 joblib>=1.2.0
 anthropic>=0.40.0
+scipy>=1.10.0
