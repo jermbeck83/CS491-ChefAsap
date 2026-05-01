@@ -32,27 +32,29 @@ def get_zip_coordinates(zip_code):
 
 @booking_bp.route('/create', methods=['POST'])
 def create_booking():
-    """Create a new booking request"""
+    """Create a new booking request with pricing data"""
     try:
         data = request.get_json()
         
-    
         customer_id = data.get('customer_id')
         cuisine_type = data.get('cuisine_type')
         meal_type = data.get('meal_type')
-        event_type = data.get('event_type', 'dinner')  # Default to 'dinner'
+        event_type = data.get('event_type', 'dinner')
         booking_date = data.get('booking_date')
         booking_time = data.get('booking_time')
         produce_supply = data.get('produce_supply', 'customer')
         number_of_people = data.get('number_of_people')
         special_notes = data.get('special_notes', '')
         
-     
+        # FIX: Capture pricing fields from the frontend payload
+        base_price = data.get('base_price')
+        dynamic_price = data.get('dynamic_price')
+        total_cost = data.get('total_cost')
+        
         if not all([customer_id, cuisine_type, meal_type, 
                    booking_date, booking_time, number_of_people]):
             return jsonify({'error': 'Missing required fields'}), 400
         
- 
         booking_datetime = datetime.strptime(f"{booking_date} {booking_time}", "%Y-%m-%d %H:%M")
         if booking_datetime <= datetime.now():
             return jsonify({'error': 'Booking date must be in the future'}), 400
@@ -60,14 +62,23 @@ def create_booking():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # PostgreSQL: INSERT with RETURNING
+        # FIX: Update the SQL query to include the pricing columns
         cursor.execute('''
-            INSERT INTO bookings (customer_id, cuisine_type, meal_type, event_type, 
-                                booking_date, booking_time, produce_supply, 
-                                number_of_people, special_notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
-        ''', (customer_id, cuisine_type, meal_type, event_type, 
-              booking_date, booking_time, produce_supply, number_of_people, special_notes))
+            INSERT INTO bookings (
+                customer_id, cuisine_type, meal_type, event_type, 
+                booking_date, booking_time, produce_supply, 
+                number_of_people, special_notes, 
+                base_price, dynamic_price, total_cost
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            RETURNING id
+        ''', (
+            customer_id, cuisine_type, meal_type, event_type, 
+            booking_date, booking_time, produce_supply, 
+            number_of_people, special_notes,
+            base_price, dynamic_price, total_cost
+        ))
+        
         booking_id = cursor.fetchone()[0]
         conn.commit()
         

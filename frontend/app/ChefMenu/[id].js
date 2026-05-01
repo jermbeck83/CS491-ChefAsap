@@ -235,7 +235,11 @@ export default function ChefMenu() {
             const paymentResponse = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ booking_id: bookingResult.booking_id }),
+                body: JSON.stringify({ 
+                    booking_id: bookingResult.booking_id,
+                    customer_id: userId || profileId,
+                    payment_method_id: selectedPaymentMethod
+                 }),
             });
             const paymentData = await paymentResponse.json();
             if (paymentResponse.status === 403) {

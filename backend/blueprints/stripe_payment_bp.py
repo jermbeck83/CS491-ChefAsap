@@ -827,24 +827,24 @@ def test_payment():
         if conn:
             conn.close()
 
-# AI DYNAMIC PRICING VERSION & FRAUD DETECTION
 @stripe_payment_bp.route('/create-payment-intent', methods=['POST'])
 @token_required
 def create_payment_intent(current_user_id, user_type):
-    """Create a payment intent securely using the AI-calculated price and fraud detection."""
     print(f"=== Creating payment intent for user_id: {current_user_id} ===")
     
     if user_type != 'customer':
         return jsonify({'error': 'Only customers can create payment intents'}), 403
     
     data = request.get_json()
+    print(f"DEBUG INCOMING PAYLOAD: {data}") 
     
     booking_id = data.get('booking_id')
     currency = data.get('currency', 'usd')
-    customer_id = data.get('customer_id')
+    frontend_user_id = data.get('customer_id') 
     payment_method_id = data.get('payment_method_id')
     
-    if not all([booking_id, customer_id, payment_method_id]):
+    if not all([booking_id, frontend_user_id, payment_method_id]):
+        print(f"❌ REJECTED 400 (Missing Data): booking={booking_id}, customer={frontend_user_id}, payment={payment_method_id}")
         return jsonify({'error': 'Booking ID, Customer ID, and Payment method ID are required'}), 400
     
     conn = None
@@ -852,69 +852,63 @@ def create_payment_intent(current_user_id, user_type):
     try:
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True, buffered=True)
+
+        # 1. TRANSLATE USER ID TO REAL CUSTOMER ID
+        cursor.execute('SELECT customer_id FROM users WHERE id = %s', (frontend_user_id,))
+        user_row = cursor.fetchone()
         
-        #FETCH SECURE PRICE FROM DATABASE
-        cursor.execute('''
-            SELECT base_price, dynamic_price 
-            FROM bookings 
-            WHERE id = %s
-        ''', (booking_id,))
+        if not user_row or not user_row.get('customer_id'):
+            print(f"❌ REJECTED 404: User ID {frontend_user_id} has no linked customer profile.")
+            return jsonify({'error': 'Could not link User ID to Customer ID'}), 404
+            
+        real_customer_id = user_row['customer_id']
+        print(f"✅ Translated User ID {frontend_user_id} -> Customer ID {real_customer_id}")
         
+        # 2. FETCH SECURE PRICE FROM DATABASE
+        cursor.execute('SELECT base_price, dynamic_price FROM bookings WHERE id = %s', (booking_id,))
         booking = cursor.fetchone()
         if not booking:
+            print(f"❌ REJECTED 404: Booking {booking_id} not found in database.")
             return jsonify({'error': 'Booking not found'}), 404
             
         final_price = booking.get('dynamic_price') or booking.get('base_price')
         if not final_price:
+            print(f"❌ REJECTED 400 (Pricing Error): final_price is zero or missing. DB data = {booking}")
             return jsonify({'error': 'Pricing not set for this booking'}), 400
 
-        # Convert amount to cents and ensure it's an integer
         amount_cents = int(float(final_price) * 100)
-        print(f"Secure amount in cents calculated: {amount_cents}")
+        print(f"✅ Price calculated: {amount_cents} cents")
 
-        # --- FRAUD DETECTION INTERCEPTION ---
-        # Evaluate risk before wasting API calls to Stripe
+        # --- FRAUD DETECTION ---
         risk_assessment = fraud_engine.evaluate_transaction_risk(
-            customer_id=customer_id, 
+            customer_id=real_customer_id, 
             amount_cents=amount_cents,
-            event_zip="00000" # Placeholder: Update if you capture event_zip in bookings table
+            event_zip="00000" 
         )
         
-        # Log the fraud analysis to the database
         cursor.execute('''
             UPDATE bookings 
             SET fraud_score = %s, fraud_flags = %s, is_flagged_fraud = %s
             WHERE id = %s
-        ''', (
-            risk_assessment['fraud_score'], 
-            json.dumps(risk_assessment['flags']), 
-            risk_assessment['is_flagged'], 
-            booking_id
-        ))
+        ''', (risk_assessment['fraud_score'], json.dumps(risk_assessment['flags']), risk_assessment['is_flagged'], booking_id))
         conn.commit()
 
-        # If the risk is too high, block the transaction immediately
         if risk_assessment['is_flagged']:
-            print(f"🚨 BLOCKED SUSPICIOUS TRANSACTION: Booking {booking_id}")
-            return jsonify({
-                'error': 'This transaction was flagged by our security systems. Please contact support.',
-                'fraud_score': risk_assessment['fraud_score'] 
-            }), 403
-        # --------------------------------------------
-
-        # 2. Get Stripe customer ID (Only happens if fraud check passes)
-        cursor.execute('''
-            SELECT stripe_customer_id FROM customers
-            WHERE id = %s
-        ''', (customer_id,))
+            print(f"❌ REJECTED 403: Fraud flagged.")
+            return jsonify({'error': 'Flagged transaction'}), 403
         
+        # 3. Get Stripe customer ID using the REAL customer id
+        cursor.execute('SELECT stripe_customer_id FROM customers WHERE id = %s', (real_customer_id,))
         result = cursor.fetchone()
         stripe_customer_id = result.get('stripe_customer_id') if result else None
         
         if not stripe_customer_id:
+            print(f"❌ REJECTED 400 (Missing Stripe Profile): No Stripe ID found for real_customer_id {real_customer_id}")
             return jsonify({'error': 'Stripe customer not found'}), 400
         
-        # 3. Create payment intent
+        print(f"✅ Found Stripe Customer ID: {stripe_customer_id}")
+
+        # 4. Create payment intent
         is_surge = booking.get('dynamic_price') and booking.get('dynamic_price') > booking.get('base_price')
         description = f"ChefAsap Booking {booking_id} (High Demand)" if is_surge else f"ChefAsap Booking {booking_id}"
         
@@ -926,15 +920,11 @@ def create_payment_intent(current_user_id, user_type):
             'payment_method': payment_method_id,
             'confirm': True,
             'automatic_payment_methods': {'enabled': True, 'allow_redirects': 'never'},
-            'metadata': {
-                'booking_id': booking_id
-            }
+            'metadata': {'booking_id': booking_id}
         }
         
-        print(f"Creating payment intent with params: {intent_params}")
         payment_intent = stripe.PaymentIntent.create(**intent_params)
-        
-        print(f"Payment intent created: {payment_intent.id}, status: {payment_intent.status}")
+        print(f"✅ Success! Payment Intent created: {payment_intent.id}")
         
         return jsonify({
             'success': True,
@@ -944,7 +934,7 @@ def create_payment_intent(current_user_id, user_type):
         }), 200
         
     except Exception as e:
-        print(f"Error creating payment intent: {str(e)}")
+        print(f"❌ FATAL ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500

@@ -81,7 +81,7 @@ class DynamicPricingEngine:
                 supply AS (
                     SELECT COUNT(id) as supply_score
                     FROM users
-                    WHERE role = 'chef' AND is_active = TRUE
+                    WHERE user_type = 'chef'
                     -- In production, join with a chef_availability table here
                 )
                 SELECT 

@@ -105,6 +105,7 @@ def serve_static(filename):
 def __routes__():
     return "<pre>" + "\n".join(sorted(f"{','.join(sorted(r.methods))} {r.rule}" for r in app.url_map.iter_rules())) + "</pre>"
 
+""" ---- Debug route to check JWT secret key loading - This is just for testing purposes and should be removed or protected in production! 
 @app.route('/debug/jwt-check')
 def jwt_check():
     secret = os.environ.get('JWT_SECRET_KEY', 'NOT SET')
@@ -112,7 +113,7 @@ def jwt_check():
         'first_10': secret[:10],
         'length': len(secret)
     })
-
+"""
 if __name__ == '__main__':
     hostname = socket.gethostname()
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
