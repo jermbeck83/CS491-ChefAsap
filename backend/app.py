@@ -11,6 +11,8 @@ from database.config import db_config
 
 from database.db_helper import get_db_connection, get_cursor
 from blueprints.auth_bp import auth_bp
+
+
 from blueprints.booking_bp import booking_bp
 from blueprints.profile_bp import profile_bp
 from blueprints.chat_bp import chat_bp
@@ -102,6 +104,14 @@ def serve_static(filename):
 @app.route('/__routes__')
 def __routes__():
     return "<pre>" + "\n".join(sorted(f"{','.join(sorted(r.methods))} {r.rule}" for r in app.url_map.iter_rules())) + "</pre>"
+
+@app.route('/debug/jwt-check')
+def jwt_check():
+    secret = os.environ.get('JWT_SECRET', 'NOT SET')
+    return jsonify({
+        'first_10': secret[:10],
+        'length': len(secret)
+    })
 
 if __name__ == '__main__':
     hostname = socket.gethostname()
