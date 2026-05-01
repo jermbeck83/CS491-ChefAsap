@@ -230,7 +230,8 @@ export default function ChefMenu() {
             });
             const bookChefResult = await bookChefResponse.json();
             if (!bookChefResponse.ok) { Alert.alert('Booking Error', bookChefResult.error || 'Chef booking failed.'); setPaymentProcessing(false); return; }
-
+         
+            console.log('Sending payment with booking_id:', bookingResult.booking_id, 'token:', token?.substring(0, 20));
             const paymentResponse = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
