@@ -171,14 +171,6 @@ export default function Messages() {
         return list;
     }, [conversations, filter, searchQuery, userType]);
 
-    const openCompose = () => {
-        if (userType === 'chef') {
-            router.push('/(tabs)/BookingsScreen');
-        } else {
-            router.push('/(tabs)/SearchScreen');
-        }
-    };
-
     const renderConversation = ({ item }) => {
         const otherUserName = getOtherName(item);
         const { first, last, url } = getPhotoFirstLast(item);
@@ -222,7 +214,7 @@ export default function Messages() {
                         >
                             {url ? (
                                 <Image
-                                    source={{ uri: `${apiUrl}${url}` }}
+                                    source={{ uri: url?.startsWith('data:') ? url : `${apiUrl}${url}` }}
                                     style={{ width: 52, height: 52 }}
                                 />
                             ) : (
@@ -326,7 +318,7 @@ export default function Messages() {
         <View style={{ flex: 1, backgroundColor: pageBg }}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 20 }}>
+            <View style={{ paddingTop: insets.top, paddingHorizontal: 20 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <Text
                         style={{
@@ -354,22 +346,6 @@ export default function Messages() {
                             accessibilityLabel="Focus search"
                         >
                             <Octicons name="search" size={20} color={iconMuted} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={openCompose}
-                            style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: isLight ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.08)',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderWidth: 1,
-                                borderColor: borderSubtle,
-                            }}
-                            accessibilityLabel="New message"
-                        >
-                            <Octicons name="comment" size={20} color={iconMuted} />
                         </TouchableOpacity>
                     </View>
                 </View>

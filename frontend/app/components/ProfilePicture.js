@@ -4,12 +4,6 @@ import getEnvVars from "../../config";
 const GREEN = '#2d6a4f';
 const GREEN_LIGHT = '#d8f3dc';
 
-const getImageSource = (photoUrl, apiUrl) => {
-    if (!photoUrl) return null;
-    if (photoUrl.startsWith('data:')) return { uri: photoUrl };
-    return { uri: `${apiUrl}${photoUrl}` };
-};
-
 export default function ProfilePicture({
     photoUrl = '',
     firstName = '',
@@ -18,17 +12,27 @@ export default function ProfilePicture({
     customClasses = '',
 }) {
     const { apiUrl } = getEnvVars();
-    const imgSrc = getImageSource(photoUrl, apiUrl);
     const diameter = size * 4;
     const borderWidth = Math.max(2, size / 8);
     const fontSize = size * 1.5;
     const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
 
+    // Handle base64, full URLs, and relative paths
+    const getImageUri = () => {
+        if (!photoUrl) return null;
+        if (photoUrl.startsWith('data:')) return photoUrl;          // base64
+        if (photoUrl.startsWith('http')) return photoUrl;           // full URL
+        if (photoUrl.startsWith('/static/')) return null;           // old broken path
+        return `${apiUrl}${photoUrl}`;                              // relative path
+    };
+
+    const imageUri = getImageUri();
+
     return (
         <View style={{ alignItems: 'center' }}>
-            {imgSrc ? (
+            {imageUri ? (
                 <Image
-                    source={imgSrc}
+                    source={{ uri: imageUri }}
                     style={{
                         width: diameter,
                         height: diameter,
@@ -37,6 +41,7 @@ export default function ProfilePicture({
                         borderColor: GREEN_LIGHT,
                     }}
                     resizeMode="cover"
+                    onError={() => {}}
                 />
             ) : (
                 <View

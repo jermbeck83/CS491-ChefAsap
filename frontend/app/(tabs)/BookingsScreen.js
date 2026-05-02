@@ -456,7 +456,7 @@ export default function BookingsScreen() {
           <Text style={s.primaryBtnText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
         </TouchableOpacity>
         {userType === 'customer' && (
-          <TouchableOpacity style={s.secondaryBtn} onPress={() => router.push('/ChefOrdersScreen')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.secondaryBtn} onPress={() => router.push('/CustomerBookingsScreen')} activeOpacity={0.85}>
             <Text style={s.secondaryBtnText}>View My Bookings</Text>
           </TouchableOpacity>
         )}

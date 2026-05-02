@@ -311,11 +311,12 @@ def attach_payment_method_with_token():
     print(f"=== Attaching payment method with token ===")
     
     data = request.get_json()
-    user_id = data.get('customer_id')  # This is actually user_id from frontend
+    user_id = data.get('customer_id')
     token_id = data.get('token_id')
-    
-    if not user_id or not token_id:
-        return jsonify({'error': 'User ID and token ID are required'}), 400
+    payment_method_id = data.get('payment_method_id')
+
+    if not user_id or (not token_id and not payment_method_id):
+        return jsonify({'error': 'User ID and payment method are required'}), 400
     
     conn = None
     cursor = None
@@ -375,18 +376,23 @@ def attach_payment_method_with_token():
             ''', (stripe_customer_id, customer_id))
             conn.commit()
             print(f"Created new Stripe customer: {stripe_customer_id}")
-        
-        # Create payment method from token
-        payment_method = stripe.PaymentMethod.create(
-            type='card',
-            card={'token': token_id}
-        )
-        
-        # Attach payment method to customer
-        stripe.PaymentMethod.attach(
-            payment_method.id,
-            customer=stripe_customer_id
-        )
+
+        # Use existing payment method or create from token
+        if payment_method_id:
+            stripe.PaymentMethod.attach(
+                payment_method_id,
+                customer=stripe_customer_id
+            )
+            payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
+        else:
+            payment_method = stripe.PaymentMethod.create(
+                type='card',
+                card={'token': token_id}
+            )
+            stripe.PaymentMethod.attach(
+                payment_method.id,
+                customer=stripe_customer_id
+            )
         
         # Check if this is the first payment method - if so, set as default
         customer_payment_methods = stripe.PaymentMethod.list(

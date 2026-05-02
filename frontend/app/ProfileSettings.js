@@ -1,143 +1,103 @@
 import { useEffect, useState } from "react";
-import {Modal, View, Text, Image, ScrollView, TouchableOpacity } from "react-native";
+import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from "react-native";
 import { useAuth } from "./context/AuthContext";
 import getEnvVars from "../config";
 import * as ImagePicker from 'expo-image-picker';
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Octicons } from "@expo/vector-icons";
 import LoadingIcon from "./components/LoadingIcon";
-import Card from "./components/Card";
-import Button from "./components/Button";
 import Input from "./components/Input";
 import CustomPicker from "./components/Picker";
 import ProfilePicture from "./components/ProfilePicture";
 
-const validateEmail = (email) => {
-  const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(email);
-};
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+const BG = '#fefce8';
+const BORDER = '#e2ece2';
+const TEXT = '#1a2e1a';
+const TEXT_MID = '#4a7c59';
+const TEXT_SOFT = '#8aab8a';
 
-const filterNameCharacters = (text) => {
-  const filteredText = text.replace(/[^a-zA-Z\s'-]/g, '');
-  return filteredText;
-};
-
-const filterDigits = (text) => {
-  return text.replace(/[^0-9]/g, '');
-};
-
-const filterAddressCharacters = (text) => {
-  return text.replace(/[^a-zA-Z0-9\s.,\-\/#]/g, '');
-};
-
-const filterAlphabeticCharacters = (text) => {
-  return text.replace(/[^a-zA-Z\s'-]/g, '');
-};
+const filterNameCharacters = (t) => t.replace(/[^a-zA-Z\s'-]/g, '');
 
 const US_STATES = [
   { label: "State", value: "" },
-  { label: "Alabama", value: "AL" },
-  { label: "Alaska", value: "AK" },
-  { label: "Arizona", value: "AZ" },
-  { label: "Arkansas", value: "AR" },
-  { label: "California", value: "CA" },
-  { label: "Colorado", value: "CO" },
-  { label: "Connecticut", value: "CT" },
-  { label: "Delaware", value: "DE" },
-  { label: "Florida", value: "FL" },
-  { label: "Georgia", value: "GA" },
-  { label: "Hawaii", value: "HI" },
-  { label: "Idaho", value: "ID" },
-  { label: "Illinois", value: "IL" },
-  { label: "Indiana", value: "IN" },
-  { label: "Iowa", value: "IA" },
-  { label: "Kansas", value: "KS" },
-  { label: "Kentucky", value: "KY" },
-  { label: "Louisiana", value: "LA" },
-  { label: "Maine", value: "ME" },
-  { label: "Maryland", value: "MD" },
-  { label: "Massachusetts", value: "MA" },
-  { label: "Michigan", value: "MI" },
-  { label: "Minnesota", value: "MN" },
-  { label: "Mississippi", value: "MS" },
-  { label: "Missouri", value: "MO" },
-  { label: "Montana", value: "MT" },
-  { label: "Nebraska", value: "NE" },
-  { label: "Nevada", value: "NV" },
-  { label: "New Hampshire", value: "NH" },
-  { label: "New Jersey", value: "NJ" },
-  { label: "New Mexico", value: "NM" },
-  { label: "New York", value: "NY" },
-  { label: "North Carolina", value: "NC" },
-  { label: "North Dakota", value: "ND" },
-  { label: "Ohio", value: "OH" },
-  { label: "Oklahoma", value: "OK" },
-  { label: "Oregon", value: "OR" },
-  { label: "Pennsylvania", value: "PA" },
-  { label: "Rhode Island", value: "RI" },
-  { label: "South Carolina", value: "SC" },
-  { label: "South Dakota", value: "SD" },
-  { label: "Tennessee", value: "TN" },
-  { label: "Texas", value: "TX" },
-  { label: "Utah", value: "UT" },
-  { label: "Vermont", value: "VT" },
-  { label: "Virginia", value: "VA" },
-  { label: "Washington", value: "WA" },
-  { label: "West Virginia", value: "WV" },
-  { label: "Wisconsin", value: "WI" },
-  { label: "Wyoming", value: "WY" },
+  { label: "Alabama", value: "AL" }, { label: "Alaska", value: "AK" },
+  { label: "Arizona", value: "AZ" }, { label: "Arkansas", value: "AR" },
+  { label: "California", value: "CA" }, { label: "Colorado", value: "CO" },
+  { label: "Connecticut", value: "CT" }, { label: "Delaware", value: "DE" },
+  { label: "Florida", value: "FL" }, { label: "Georgia", value: "GA" },
+  { label: "Hawaii", value: "HI" }, { label: "Idaho", value: "ID" },
+  { label: "Illinois", value: "IL" }, { label: "Indiana", value: "IN" },
+  { label: "Iowa", value: "IA" }, { label: "Kansas", value: "KS" },
+  { label: "Kentucky", value: "KY" }, { label: "Louisiana", value: "LA" },
+  { label: "Maine", value: "ME" }, { label: "Maryland", value: "MD" },
+  { label: "Massachusetts", value: "MA" }, { label: "Michigan", value: "MI" },
+  { label: "Minnesota", value: "MN" }, { label: "Mississippi", value: "MS" },
+  { label: "Missouri", value: "MO" }, { label: "Montana", value: "MT" },
+  { label: "Nebraska", value: "NE" }, { label: "Nevada", value: "NV" },
+  { label: "New Hampshire", value: "NH" }, { label: "New Jersey", value: "NJ" },
+  { label: "New Mexico", value: "NM" }, { label: "New York", value: "NY" },
+  { label: "North Carolina", value: "NC" }, { label: "North Dakota", value: "ND" },
+  { label: "Ohio", value: "OH" }, { label: "Oklahoma", value: "OK" },
+  { label: "Oregon", value: "OR" }, { label: "Pennsylvania", value: "PA" },
+  { label: "Rhode Island", value: "RI" }, { label: "South Carolina", value: "SC" },
+  { label: "South Dakota", value: "SD" }, { label: "Tennessee", value: "TN" },
+  { label: "Texas", value: "TX" }, { label: "Utah", value: "UT" },
+  { label: "Vermont", value: "VT" }, { label: "Virginia", value: "VA" },
+  { label: "Washington", value: "WA" }, { label: "West Virginia", value: "WV" },
+  { label: "Wisconsin", value: "WI" }, { label: "Wyoming", value: "WY" },
 ];
 
-// ProfileSettings component displays and edits user profile information
+const SectionCard = ({ title, icon, children }) => (
+  <View style={s.card}>
+    <View style={s.sectionHeader}>
+      {icon && <Octicons name={icon} size={18} color={GREEN} style={{ marginRight: 8 }} />}
+      <Text style={s.sectionTitle}>{title}</Text>
+    </View>
+    <View style={s.sectionBody}>{children}</View>
+  </View>
+);
+
+const InfoRow = ({ label, value }) => (
+  <View style={s.infoRow}>
+    <Text style={s.infoLabel}>{label}</Text>
+    <Text style={s.infoValue}>{value || '—'}</Text>
+  </View>
+);
+
 export default function ProfileSettings() {
-  const { profileId, userType } = useAuth(); // Get profileId from AuthContext
-  const [profile, setProfile] = useState(null); // Holds profile data
-  const [form, setForm] = useState(null);       // Holds editable form data
-  const [error, setError] = useState(null);     // Holds error message
-  const [editing, setEditing] = useState(false); // Edit mode
+  const { profileId, userType } = useAuth();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { apiUrl } = getEnvVars();
+
+  const [profile, setProfile] = useState(null);
+  const [form, setForm] = useState(null);
+  const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-  const { apiUrl } = getEnvVars();
-
-  // Build API URL using profileId from context and config
   const privateQuery = userType === 'chef' ? '?private=true' : '';
   const API_URL = `${apiUrl}/profile/${userType}/${profileId}${privateQuery}`;
-  // Fetch profile data from backend when component mounts or profileId changes
+
   useEffect(() => {
     if (!profileId) return;
     fetch(API_URL)
-      .then((res) => res.json())
-      .then((data) => {
+      .then(res => res.json())
+      .then(data => {
         if (data.error) setError(data.error);
-        else {
-          setProfile(data.profile);
-          setForm(data.profile); // Initialize form with profile data
-          // Log the profile picture URL
-          console.log("Profile Picture URL:", data.profile?.photo_url);
-        }
+        else { setProfile(data.profile); setForm(data.profile); }
       })
-      .catch(() => setError("Network error")); //Need to change to match other pages errors
+      .catch(() => setError("Network error"));
   }, [profileId, API_URL]);
 
-  // Handle input changes for top-level fields
-  const handleChange = (field, value) => {
-    setForm({ ...form, [field]: value });
-  };
+  const handleChange = (field, value) => setForm({ ...form, [field]: value });
+  const handleAddressChange = (field, value) => setForm({ ...form, full_address: { ...form.full_address, [field]: value } });
 
-  // Handle input changes for address fields
-  const handleAddressChange = (field, value) => {
-    setForm({
-      ...form,
-      full_address: {
-        ...form.full_address,
-        [field]: value,
-      },
-    });
-  };
-
-  // Save updated info to backend
   const handleSave = () => {
-    // Flatten address fields for backend
     const payload = {
       ...form,
       address_line1: form.full_address?.address_line1 || "",
@@ -147,131 +107,90 @@ export default function ProfileSettings() {
       zip_code: form.full_address?.zip_code || "",
     };
     delete payload.full_address;
-    delete payload.email; // Email not editable
+    delete payload.email;
 
     fetch(API_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(res => res.json())
+      .then(data => {
         if (data.error) setError(data.error);
-        else {
-          setProfile({ ...profile, ...form });
-          setEditing(false);
-        }
+        else { setProfile({ ...profile, ...form }); setEditing(false); }
       })
       .catch(() => setError("Network error"));
   };
 
   const handleAccountDelete = async () => {
-    const request_delete = await fetch(`${apiUrl}/deletion_request`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        user_id: profileId,
-        user_type: userType,
-        user_email: profile.email,
-        delete_type: 'hard_delete',
-        reason: "User requested account deletion"
-    })
-  });
-  
-  const request_data = await request_delete.json();
-
-  if(!request_delete.ok){
-    alert(request_data.error || "Failed to start deletion request.");
-    return;
-  }
-
-  const{request_id, confirmation_code} = request_data;
-
-  const confirm_request = await fetch(`${apiUrl}/confirm_deletion`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      request_id,
-      confirmation_code
-    })
-  });
-
-  const confirm_data = await confirm_request.json();
-  if(!confirm_request.ok){
-    alert(confirm_data.error || "Failed to confirm deletion request.");
-    return;
-  }
-
-  //if hard_delete
-  alert("Account deleted. You will be logged out.");
-  if(typeof logout === "function") logout();
-};
+    try {
+      const res = await fetch(`${apiUrl}/deletion_request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: profileId, user_type: userType, user_email: profile.email, delete_type: 'hard_delete', reason: "User requested account deletion" }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error || "Failed to start deletion request."); return; }
+      const { request_id, confirmation_code } = data;
+      const confirmRes = await fetch(`${apiUrl}/confirm_deletion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request_id, confirmation_code }),
+      });
+      const confirmData = await confirmRes.json();
+      if (!confirmRes.ok) { alert(confirmData.error || "Failed to confirm deletion."); return; }
+      alert("Account deleted. You will be logged out.");
+    } catch (e) { alert("Network error during account deletion."); }
+  };
 
   const pickImage = async () => {
-    // Request permission
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      alert('Permission to access gallery was denied');
-      return;
-    }
-
-    // Pick image
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
+    if (status !== 'granted') { alert('Permission denied'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3,    // compress heavily
+        base64: true,    // get base64 directly from picker, no upload needed
     });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setUploading(true);
-      const localUri = result.assets[0].uri;
-      const filename = localUri.split('/').pop();
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : `image`;
-
-      // Prepare FormData
-      const formData = new FormData();
-      formData.append('photo', {
-        uri: localUri,
-        name: filename,
-        type,
-      });
-
-      // Upload to backend
-      try {
-        const uploadUrl = `${apiUrl}/profile/${userType}/${profileId}/photo`;
-        const response = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-          body: formData,
-        });
-        const data = await response.json();
-        if (data.photo_url) {
-          // Update profile with new photo_url
-          setProfile({ ...profile, photo_url: data.photo_url });
-          setForm({ ...form, photo_url: data.photo_url });
-        } else {
-          alert('Failed to upload image');
-        }
-      } catch (error) {
-        alert('Error uploading image');
-      }
-      setUploading(false);
+    if (!result.canceled && result.assets?.length > 0) {
+        setUploading(true);
+        const asset = result.assets[0];
+        const base64 = `data:image/jpeg;base64,${asset.base64}`;
+        try {
+            const response = await fetch(`${apiUrl}/profile/${userType}/${profileId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photo_url: base64 }),
+            });
+            const data = await response.json();
+            if (data.error) alert(data.error);
+            else {
+                setProfile({ ...profile, photo_url: base64 });
+                setForm({ ...form, photo_url: base64 });
+            }
+        } catch (e) { alert('Error uploading image'); }
+        setUploading(false);
     }
   };
 
-  // Show error if there is one
-  if (error) return <Text className="text-red-500">{error}</Text>;
-  // Show loading message while profile is being fetched
   if (!profile || !form) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View className="flex-1 justify-center items-center bg-base-100 dark:bg-base-dark-100">
-          <LoadingIcon message="Loading User Profile..." />
+        <View style={[s.screen, { justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }]}>
+          <LoadingIcon message="Loading Profile Settings..." />
+        </View>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={[s.screen, { justifyContent: 'center', alignItems: 'center', padding: 24, paddingTop: insets.top }]}>
+          <Text style={{ color: '#ef4444', fontSize: 15, textAlign: 'center' }}>{error}</Text>
         </View>
       </>
     );
@@ -279,246 +198,228 @@ export default function ProfileSettings() {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5">
-        {/* Profile title */}
-        {/* Profile Picture Display */}
-        <Card title="Profile" headerIcon="gear" customClasses="w-full">
-          <TouchableOpacity className="items-center" onPress={pickImage} disabled={uploading || !editing}>
-            <ProfilePicture photoUrl={profile.photo_url} firstName={profile?.first_name} lastName={profile?.last_name} />
-            {editing &&
-              <Text className="text-base text-primary-400 underline pt-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                {uploading ? "Uploading..." : "Tap to change profile picture"}
-              </Text>
-            }
+      <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: BG } }} />
+      <ScrollView style={s.screen} contentContainerStyle={{ paddingTop: insets.top, padding: 20, paddingBottom: 40 }}>
+
+        {/* Header */}
+        <View style={s.pageHeader}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+            <Octicons name="chevron-left" size={22} color={GREEN} />
           </TouchableOpacity>
+          <Text style={s.pageTitle}>Profile Settings</Text>
+          <View style={{ width: 38 }} />
+        </View>
 
-        </Card>
-        {/*<Text>PROFILE {JSON.stringify(profile)}</Text>*/}
+        {/* Avatar */}
+        <SectionCard title="Profile Photo" icon="person">
+          <TouchableOpacity onPress={editing ? pickImage : undefined} style={{ alignItems: 'center', paddingVertical: 8 }}>
+            <ProfilePicture photoUrl={profile.photo_url} firstName={profile?.first_name} lastName={profile?.last_name} />
+            {editing && (
+              <Text style={s.changePhotoText}>{uploading ? "Uploading..." : "Tap to change profile picture"}</Text>
+            )}
+          </TouchableOpacity>
+        </SectionCard>
 
-        {/* Editable fields */}
         {editing ? (
           <>
-            <Card title="Personal Information" headerIcon="person" customClasses="w-full">
-              <Text className="text-sm font-semibold mb-1 mt-2 text-primary-400 dark:text-dark-400">Name</Text>
-              <View className="flex-row justify-between">
-                <Input
-                  placeholder="First Name"
-                  value={form.first_name}
-                  onChangeText={v => handleChange("first_name", filterNameCharacters(v))}
-                  containerClasses="flex-1 mx-0.5 mb-2 mt-0"
-                />
-
-                <Input
-                  placeholder="Last Name"
-                  value={form.last_name}
-                  onChangeText={v => handleChange("last_name", filterNameCharacters(v))}
-                  containerClasses="flex-1 mx-0.5 mb-2 mt-0"
-                />
-              </View>
-
-              <Text className="text-sm font-semibold mb-1 mt-2 text-primary-400 dark:text-dark-400">Email Address</Text>
-              <Text className="border border-gray-300 bg-white rounded-full py-3 px-4 text-base text-gray-400">
-                {profile.email}
-              </Text>
-
-              <Input label="Phone Number"
-                value={form.phone}
-                onChangeText={v => handleChange("phone", v)}
-                keyboardType="phone-pad"
-                placeholder="(555) 123-4567"
-                maxLength={10}
-              />
-            </Card>
-
-            <Card title={"Your Address"} headerIcon="location" customClasses="w-full">
-              <Input
-                label="Street Address"
-                placeholder="123 Main Street"
-                value={form.full_address?.address_line1 || ""}
-                onChangeText={v => handleAddressChange("address_line1", v)}
-              />
-
-              <Input
-                label="Apartment, Suite, etc. (Optional)"
-                placeholder="Apt 4B, Suite 200, etc."
-                value={form.full_address?.address_line2 || ""}
-                onChangeText={v => handleAddressChange("address_line2", v)}
-              />
-
-              <Input
-                label="City"
-                placeholder="City"
-                value={form.full_address?.city || ""}
-                onChangeText={v => handleAddressChange("city", v)}
-              />
-
-              <View className="flex-row justify-between">
-                <CustomPicker
-                  label="State"
-                  prompt="Select a State"
-                  selectedValue={form.full_address?.state}
-                  onValueChange={(v) => handleAddressChange("state", v)}
-                  items={US_STATES}
-                />
-
-                <View className="flex-1 ml-3">
-                  <Input
-                    label="Zip Code"
-                    placeholder="12345"
-                    value={form.full_address?.zip_code || ""}
-                    onChangeText={v => handleAddressChange("zip_code", v)}
-                    keyboardType="numeric"
-                    maxLength={5}
-                    customClasses="text-center"
-                    containerClasses="mb-2"
-                  />
+            <SectionCard title="Personal Information" icon="person">
+              <Text style={s.fieldLabel}>Name</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 4 }}>
+                <View style={{ flex: 1 }}>
+                  <Input placeholder="First Name" value={form.first_name}
+                    onChangeText={v => handleChange("first_name", filterNameCharacters(v))}
+                    containerClasses="mb-2 mt-0" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input placeholder="Last Name" value={form.last_name}
+                    onChangeText={v => handleChange("last_name", filterNameCharacters(v))}
+                    containerClasses="mb-2 mt-0" />
                 </View>
               </View>
-            </Card>
 
-            <Card title={"Other"} headerIcon="three-bars" customClasses="w-full">
+              <Text style={s.fieldLabel}>Email Address</Text>
+              <View style={s.disabledField}>
+                <Text style={s.disabledFieldText}>{profile.email}</Text>
+              </View>
+
+              <Input label="Phone Number" value={form.phone}
+                onChangeText={v => handleChange("phone", v)}
+                keyboardType="phone-pad" placeholder="(555) 123-4567" maxLength={10} />
+            </SectionCard>
+
+            <SectionCard title="Your Address" icon="location">
+              <Input label="Street Address" placeholder="123 Main Street"
+                value={form.full_address?.address_line1 || ""}
+                onChangeText={v => handleAddressChange("address_line1", v)} />
+              <Input label="Apartment, Suite, etc. (Optional)" placeholder="Apt 4B"
+                value={form.full_address?.address_line2 || ""}
+                onChangeText={v => handleAddressChange("address_line2", v)} />
+              <Input label="City" placeholder="City"
+                value={form.full_address?.city || ""}
+                onChangeText={v => handleAddressChange("city", v)} />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <CustomPicker label="State" prompt="Select a State"
+                    selectedValue={form.full_address?.state}
+                    onValueChange={v => handleAddressChange("state", v)}
+                    items={US_STATES} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Zip Code" placeholder="12345"
+                    value={form.full_address?.zip_code || ""}
+                    onChangeText={v => handleAddressChange("zip_code", v)}
+                    keyboardType="numeric" maxLength={5} />
+                </View>
+              </View>
+            </SectionCard>
+
+            <SectionCard title="Other" icon="three-bars">
               {userType === 'customer' ? (
-                <Input
-                  value={form.allergy_notes}
-                  onChangeText={v => handleChange("allergy_notes", v)}
-                  label="Allergy Notes"
-                  placeholder="Allergy Notes"
-                  isTextArea={true}
-                  multiline={true}
-                />
+                <Input value={form.allergy_notes} onChangeText={v => handleChange("allergy_notes", v)}
+                  label="Allergy Notes" placeholder="Any allergies..." isTextArea multiline />
               ) : (
-                <Input
-                  value={form.description}
-                  onChangeText={v => handleChange("description", v)}
-                  label="About / Bio"
-                  placeholder="Tell customers about yourself and your cooking..."
-                  isTextArea={true}
-                  maxLength={500}
-                  multiline={true}
-                />
+                <Input value={form.description} onChangeText={v => handleChange("description", v)}
+                  label="About / Bio" placeholder="Tell customers about yourself..."
+                  isTextArea maxLength={500} multiline />
               )}
-              <Text className="text-sm font-semibold mb-1 mt-2 text-primary-400 dark:text-dark-400">Member Since</Text>
-              <Text className="border border-gray-300 bg-white rounded-full py-3 px-4 text-base text-gray-400">{profile.member_since}</Text>
-            </Card>
+              <Text style={s.fieldLabel}>Member Since</Text>
+              <View style={s.disabledField}>
+                <Text style={s.disabledFieldText}>{profile.member_since}</Text>
+              </View>
+            </SectionCard>
 
-            <Button
-              title="Save"
-              onPress={handleSave}
-              customClasses="min-w-[50%]"
-            />
-            <Button
-              title="Delete Account"
-              onPress={() => setDeleteConfirm(true)}
-              style="delete"
-              customClasses="min-w-[50%]"
-            />
-            <Button
-              title="Cancel"
-              onPress={() => { setEditing(false); setForm(profile); }}
-              style="secondary"
-              customClasses="min-w-[50%]"
-            />
+            {/* Action buttons */}
+            <TouchableOpacity style={s.primaryBtn} onPress={handleSave} activeOpacity={0.85}>
+              <Text style={s.primaryBtnText}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.deleteBtn} onPress={() => setDeleteConfirm(true)} activeOpacity={0.85}>
+              <Text style={s.deleteBtnText}>Delete Account</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.outlineBtn} onPress={() => { setEditing(false); setForm(profile); }} activeOpacity={0.85}>
+              <Text style={s.outlineBtnText}>Cancel</Text>
+            </TouchableOpacity>
           </>
         ) : (
           <>
-            <Card title="Personal Information" headerIcon="person" customClasses="w-full">
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Name: </Text> {profile.first_name} {profile.last_name}
-              </Text>
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Email: </Text> {profile.email}
-              </Text>
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Phone: </Text> {profile.phone}
-              </Text>
-            </Card>
-            <Card title="Your Address" headerIcon="location" customClasses="w-full">
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Address{profile.full_address?.address_line2 && " 1"}: </Text>{profile.full_address?.address_line1}
-              </Text>
-              {profile.full_address?.address_line2 &&
-                <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                  <Text className="font-semibold">Address 2: </Text>{profile.full_address?.address_line2}
-                </Text>
-              }
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">City: </Text>{profile.full_address?.city}
-              </Text>
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">State: </Text>{US_STATES.find(state => state.value === profile.full_address?.state)?.label}
-              </Text>
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Zip Code: </Text>{profile.full_address?.zip_code}
-              </Text>
-            </Card>
-            <Card title={"Other"} headerIcon="three-bars" customClasses="w-full">
+            <SectionCard title="Personal Information" icon="person">
+              <InfoRow label="Name" value={`${profile.first_name} ${profile.last_name}`} />
+              <InfoRow label="Email" value={profile.email} />
+              <InfoRow label="Phone" value={profile.phone} />
+            </SectionCard>
 
-              {userType === 'customer' ? (
-                <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                  <Text className="font-semibold">Allergy Notes: </Text>{profile.allergy_notes || "None"}
-                </Text>
-              ) : (
-                <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                  <Text className="font-semibold">About / Bio: </Text>{profile.description || "No description yet"}
-                </Text>
+            <SectionCard title="Your Address" icon="location">
+              <InfoRow label="Address" value={profile.full_address?.address_line1} />
+              {profile.full_address?.address_line2 && (
+                <InfoRow label="Address 2" value={profile.full_address.address_line2} />
               )}
-              <Text className="text-lg text-primary-400 mb-2 dark:text-dark-400" style={{ textAlign: "left" }}>
-                <Text className="font-semibold">Member Since: </Text>{profile.member_since}
-              </Text>
-            </Card>
-            <Button
-              title="Edit Information"
-              onPress={() => setEditing(true)}
-              customClasses="min-w-[60%]"
-            />
-            <Button
-              title="← Return"
-              style="secondary"
-              href="/(tabs)/Profile"
-              customClasses="min-w-[60%]"
-            />
+              <InfoRow label="City" value={profile.full_address?.city} />
+              <InfoRow label="State" value={US_STATES.find(s => s.value === profile.full_address?.state)?.label} />
+              <InfoRow label="Zip Code" value={profile.full_address?.zip_code} />
+            </SectionCard>
+
+            <SectionCard title="Other" icon="three-bars">
+              {userType === 'customer' ? (
+                <InfoRow label="Allergy Notes" value={profile.allergy_notes || "None"} />
+              ) : (
+                <InfoRow label="About / Bio" value={profile.description || "No description yet"} />
+              )}
+              <InfoRow label="Member Since" value={profile.member_since} />
+            </SectionCard>
+
+            <TouchableOpacity style={s.primaryBtn} onPress={() => setEditing(true)} activeOpacity={0.85}>
+              <Text style={s.primaryBtnText}>Edit Information</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.outlineBtn} onPress={() => router.back()} activeOpacity={0.85}>
+              <Text style={s.outlineBtnText}>← Return</Text>
+            </TouchableOpacity>
           </>
         )}
-        <View className="h-8" />
-        <Modal
-          visible={deleteConfirm}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDeleteConfirm(false)}
-        >
-          <View className="flex-1 items-center justify-center bg-black/50">
-            <View className="bg-white dark:bg-dark-200 p-6 rounded-2xl w-80">
-              <Text className="text-lg font-semibold mb-4 text-primary-400 dark:text-dark-400">
-                Delete your account?
-              </Text>
+      </ScrollView>
 
-              <Text className="mb-6 text-gray-700 dark:text-gray-300">
-                This action cannot be undone.
-              </Text>
-
-              <View className="flex-row justify-between mt-3">
-                <Button
-                  title="Cancel"
-                  style="secondary"
-                  onPress={() => setDeleteConfirm(false)}
-                  customClasses="min-w-[40%]"
-                />
-
-                <Button
-                  title="Delete"
-                  style="delete"
-                  onPress={() => {
-                    setDeleteConfirm(false);
-                    handleAccountDelete();
-                  }}
-                  customClasses="min-w-[40%]"
-                />
-              </View>
+      {/* Delete confirm modal */}
+      <Modal visible={deleteConfirm} transparent animationType="fade" onRequestClose={() => setDeleteConfirm(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Delete your account?</Text>
+            <Text style={s.modalBody}>This action cannot be undone.</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity style={[s.outlineBtn, { flex: 1 }]} onPress={() => setDeleteConfirm(false)}>
+                <Text style={s.outlineBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.deleteBtn, { flex: 1, marginTop: 0 }]} onPress={() => { setDeleteConfirm(false); handleAccountDelete(); }}>
+                <Text style={s.deleteBtnText}>Delete</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </ScrollView>
+        </View>
+      </Modal>
     </>
   );
 }
+
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: BG },
+  pageHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center',
+  },
+  pageTitle: { fontSize: 20, fontWeight: '800', color: TEXT },
+  card: {
+    backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+    marginBottom: 16, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: BORDER,
+  },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: TEXT },
+  sectionBody: { padding: 16 },
+  fieldLabel: {
+    fontSize: 12, fontWeight: '700', color: TEXT_MID,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6, marginTop: 8,
+  },
+  disabledField: {
+    backgroundColor: '#f0f5f0', borderRadius: 12, borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8,
+  },
+  disabledFieldText: { fontSize: 15, color: TEXT_SOFT },
+  infoRow: {
+    flexDirection: 'row', paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#f5f5f0',
+  },
+  infoLabel: { fontSize: 14, fontWeight: '700', color: TEXT, width: 100 },
+  infoValue: { fontSize: 14, color: TEXT_MID, flex: 1 },
+  changePhotoText: {
+    fontSize: 13, color: TEXT_MID, marginTop: 8,
+    textDecorationLine: 'underline',
+  },
+  primaryBtn: {
+    backgroundColor: GREEN, paddingVertical: 16, borderRadius: 14,
+    alignItems: 'center', marginBottom: 10,
+    shadowColor: GREEN, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+  },
+  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  outlineBtn: {
+    paddingVertical: 15, borderRadius: 14, alignItems: 'center',
+    borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff', marginBottom: 10,
+  },
+  outlineBtnText: { color: TEXT_MID, fontWeight: '600', fontSize: 15 },
+  deleteBtn: {
+    backgroundColor: '#ef4444', paddingVertical: 15, borderRadius: 14,
+    alignItems: 'center', marginBottom: 10,
+  },
+  deleteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+  modalCard: {
+    backgroundColor: '#fff', borderRadius: 20, padding: 24, width: '85%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 10,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: TEXT, marginBottom: 8 },
+  modalBody: { fontSize: 14, color: TEXT_SOFT },
+});

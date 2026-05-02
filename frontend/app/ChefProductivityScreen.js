@@ -43,7 +43,7 @@ async function callAssistant({ token, bookingId, capability, body }) {
 
 // ── Prep List Card ──────────────────────────────────────────────
 function PrepListCard({ data }) {
-    const items = data?.prep_list || data?.items || [];
+    const items = data?.prep_list?.prep_list || data?.prep_list || data?.items || [];
     if (!items.length) return null;
     const grouped = items.reduce((acc, item) => {
         const key = item.do_at || 'General';
@@ -76,7 +76,7 @@ function PrepListCard({ data }) {
 
 // ── Timeline Card ───────────────────────────────────────────────
 function TimelineCard({ data }) {
-    const steps = data?.timeline || data?.steps || [];
+    const steps = data?.timeline?.timeline || data?.timeline?.steps || data?.timeline || data?.steps || [];
     if (!steps.length) return null;
     return (
         <View style={{ paddingLeft: 8 }}>
@@ -152,9 +152,9 @@ function SubstitutionLookup({ token, bookingId, loadingTab, setLoadingTab, data,
                 }
             </TouchableOpacity>
 
-            {data?.subs?.substitutions && (
+            {(data?.subs?.substitutions || data?.subs?.data?.substitutions) && (
                 <View style={{ marginTop: 16 }}>
-                    {data.subs.substitutions.map((sub, i) => (
+                    {(data.subs.substitutions || data.subs.data?.substitutions || []).map((sub, i) => (
                         <View key={i} style={s.subCard}>
                             <View style={s.subRank}><Text style={s.subRankText}>{i + 1}</Text></View>
                             <View style={{ flex: 1 }}>
@@ -172,7 +172,7 @@ function SubstitutionLookup({ token, bookingId, loadingTab, setLoadingTab, data,
 
 // ── Plating Card ────────────────────────────────────────────────
 function PlatingCard({ data }) {
-    const dishes = data?.plating || [];
+    const dishes = data?.plating?.plating || data?.plating || [];
     if (!dishes.length) return null;
     return (
         <View>
@@ -240,7 +240,7 @@ export default function ChefProductivityScreen() {
         setLoadingTab(capability);
         try {
             const result = await callAssistant({ token, bookingId, capability, body: {} });
-            setData(prev => ({ ...prev, [capability]: result }));
+            setData(prev => ({ ...prev, [capability]: result.data || result }));
         } catch (e) {
             if (e.message?.includes('403')) {
                 Alert.alert('Access Denied', "This booking isn't yours.");
