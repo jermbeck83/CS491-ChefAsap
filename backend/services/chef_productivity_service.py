@@ -18,10 +18,10 @@ from services.llm_service import call_llm, DEFAULT_MODEL, FAST_MODEL
 # ---------------------------------------------------------------------------
 
 def _get_chef_id_for_user(conn, user_id: int) -> int | None:
-    """Map auth user_id -> chefs.id."""
+    """In this schema the chef profile id == the auth user id (chefs.id = users.id)."""
     cursor = get_cursor(conn, dictionary=True)
     try:
-        cursor.execute("SELECT id FROM chefs WHERE user_id = %s", (user_id,))
+        cursor.execute("SELECT id FROM chefs WHERE id = %s", (user_id,))
         row = cursor.fetchone()
         return row["id"] if row else None
     finally:
