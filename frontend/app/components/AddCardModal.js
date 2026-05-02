@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, StyleSheet, KeyboardAvoidingView } from 'react-native';
 import { CardField, useStripe } from '@stripe/stripe-react-native';
 import getEnvVars from '../../config';
 
@@ -44,6 +44,7 @@ const AddCardModal = ({ visible, onClose, onSuccess, customerId }) => {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <View style={s.overlay}>
         <View style={s.card}>
           <View style={s.handle} />
@@ -83,6 +84,7 @@ const AddCardModal = ({ visible, onClose, onSuccess, customerId }) => {
           </View>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

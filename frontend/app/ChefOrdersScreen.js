@@ -12,6 +12,10 @@ import Card from "./components/Card";
 import CalendarConnectButton from "./components/CalendarConnectButton";
 import CalendarIcsUploadButton from "./components/CalendarIcsUploadButton";
 
+// ── Import the meal-time validator so we can show a mismatch warning
+// ── on the booking card itself (replaces Kitchen Assistant conflict flag)
+import { getKitchenConflicts } from "../utils/mealTimeUtils";
+
 const GREEN = '#2d6a4f';
 const GREEN_LIGHT = '#d8f3dc';
 const BG = '#fefce8';
@@ -29,12 +33,16 @@ const STATUS_COLORS = {
 };
 
 const STATUS_BUTTONS = [
-    { label: 'All', value: 'all' },
-    { label: 'Pending', value: 'pending' },
-    { label: 'Accepted', value: 'accepted' },
+    { label: 'All',       value: 'all'       },
+    { label: 'Pending',   value: 'pending'   },
+    { label: 'Accepted',  value: 'accepted'  },
     { label: 'Completed', value: 'completed' },
-    { label: 'Declined', value: 'declined' },
+    { label: 'Declined',  value: 'declined'  },
 ];
+
+// ── Safe string helper: converts null/undefined to '' so nothing
+// ── ever ends up as a raw value outside a <Text> node
+const safe = (val) => (val == null ? '' : String(val));
 
 export default function ChefOrdersScreen() {
     const { token, profileId, userType } = useAuth();
@@ -68,7 +76,11 @@ export default function ChefOrdersScreen() {
     };
 
     useEffect(() => {
-        if (userType !== 'chef') { Alert.alert('Access Denied', 'Only chefs can view this page'); router.back(); return; }
+        if (userType !== 'chef') {
+            Alert.alert('Access Denied', 'Only chefs can view this page');
+            router.back();
+            return;
+        }
         fetchBookings();
     }, [selectedStatus]);
 
@@ -82,8 +94,12 @@ export default function ChefOrdersScreen() {
                 body: JSON.stringify({ status: newStatus }),
             });
             const data = await response.json();
-            if (response.ok) { Alert.alert('Success', `Booking ${newStatus}`); fetchBookings(); }
-            else Alert.alert('Error', data.error || 'Failed to update booking');
+            if (response.ok) {
+                Alert.alert('Success', `Booking ${newStatus}`);
+                fetchBookings();
+            } else {
+                Alert.alert('Error', data.error || 'Failed to update booking');
+            }
         } catch (error) {
             Alert.alert('Error', 'Network error. Could not update booking.');
         }
@@ -93,13 +109,45 @@ export default function ChefOrdersScreen() {
         router.push({
             pathname: '/ChefProductivityScreen',
             params: {
-                bookingId: booking.booking_id,
-                bookingDate: booking.booking_date,
-                bookingTime: booking.booking_time,
-                guestCount: booking.number_of_people,
+                bookingId:    booking.booking_id,
+                bookingDate:  booking.booking_date,
+                bookingTime:  booking.booking_time,
+                guestCount:   booking.number_of_people,
                 customerName: booking.customer_name,
             },
         });
+    };
+
+    // ── Meal-type mismatch badge for a booking card
+    // Uses the same logic as Kitchen Assistant so the two are always in sync
+    const renderMealConflict = (booking) => {
+        const menuItems = booking.menu_items || [];
+        if (!menuItems.length) return null;
+
+        const conflicts = getKitchenConflicts(
+            { booking_time: booking.booking_time },
+            menuItems
+        );
+        if (!conflicts.length) return null;
+
+        return (
+            <View style={s.conflictBox}>
+                <Octicons name="alert" size={13} color="#92400e" />
+                <Text style={s.conflictText}>
+                    {'Meal-time mismatch — confirm with customer before service.'}
+                </Text>
+            </View>
+        );
+    };
+
+    // ── Build the info line safely so null values never crash the renderer
+    const buildInfoLine = (booking) => {
+        const parts = [
+            safe(booking.number_of_people) + ' guests',
+            booking.cuisine_type ? safe(booking.cuisine_type) : null,
+            booking.meal_type    ? safe(booking.meal_type)    : null,
+        ].filter(Boolean);
+        return parts.join(' · ');
     };
 
     if (loading && !refreshing) {
@@ -132,28 +180,46 @@ export default function ChefOrdersScreen() {
                 {/* Calendar Sync */}
                 <Card title="Calendar Sync" headerIcon="calendar" isCollapsible startExpanded={false}>
                     <Text style={s.cardNote}>Connect Google Calendar to sync bookings automatically</Text>
-                    <CalendarConnectButton onSynced={(data) => { Alert.alert('Success', `Synced ${data.count || 0} events`); fetchBookings(); }} />
+                    <CalendarConnectButton
+                        onSynced={(data) => {
+                            Alert.alert('Success', `Synced ${data.count || 0} events`);
+                            fetchBookings();
+                        }}
+                    />
                     <View style={s.divider} />
                     <Text style={s.cardNote}>Or import from an .ics calendar file</Text>
-                    <CalendarIcsUploadButton onUploaded={(count) => { Alert.alert('Success', `Imported ${count} events`); fetchBookings(); }} />
+                    <CalendarIcsUploadButton
+                        onUploaded={(count) => {
+                            Alert.alert('Success', `Imported ${count} events`);
+                            fetchBookings();
+                        }}
+                    />
                 </Card>
 
                 {/* Status Filter */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginBottom: 16 }}
+                    contentContainerStyle={{ gap: 8 }}
+                >
                     {STATUS_BUTTONS.map(btn => (
                         <TouchableOpacity
                             key={btn.value}
                             onPress={() => setSelectedStatus(btn.value)}
                             style={[s.filterPill, selectedStatus === btn.value && s.filterPillActive]}
                         >
-                            <Text style={[s.filterPillText, selectedStatus === btn.value && s.filterPillTextActive]}>
+                            <Text style={[
+                                s.filterPillText,
+                                selectedStatus === btn.value && s.filterPillTextActive,
+                            ]}>
                                 {btn.label}
                             </Text>
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
 
-                {/* Bookings */}
+                {/* Bookings list */}
                 {bookings.length === 0 ? (
                     <View style={s.emptyCard}>
                         <Octicons name="calendar" size={40} color={GREEN_LIGHT} />
@@ -162,66 +228,87 @@ export default function ChefOrdersScreen() {
                 ) : (
                     bookings.map((booking) => {
                         const bookingDate = new Date(booking.booking_date);
-                        const formattedDate = bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const formattedDate = bookingDate.toLocaleDateString('en-US', {
+                            month: 'short', day: 'numeric', year: 'numeric',
+                        });
                         const displayTitle = booking.customer_name
                             ? `${booking.customer_name} — ${formattedDate}`
-                            : `Booking #${booking.booking_id}`;
+                            : `Booking #${safe(booking.booking_id)}`;
+
                         const statusStyle = STATUS_COLORS[booking.status] || STATUS_COLORS.pending;
                         const isUpcoming = ['pending', 'accepted'].includes(booking.status);
 
                         return (
                             <View key={booking.booking_id} style={s.bookingCard}>
+
                                 {/* Card Header */}
                                 <View style={s.bookingHeader}>
-                                    <Text style={s.bookingTitle} numberOfLines={1}>{displayTitle}</Text>
+                                    <Text style={s.bookingTitle} numberOfLines={1}>
+                                        {displayTitle}
+                                    </Text>
                                     <View style={[s.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                                        <Text style={[s.statusText, { color: statusStyle.text }]}>{booking.status}</Text>
+                                        <Text style={[s.statusText, { color: statusStyle.text }]}>
+                                            {safe(booking.status)}
+                                        </Text>
                                     </View>
                                 </View>
 
                                 <View style={s.bookingBody}>
+
                                     {/* Date & Time */}
                                     <View style={s.infoRow}>
                                         <Octicons name="clock" size={14} color={TEXT_SOFT} />
-                                        <Text style={s.infoText}>{booking.booking_date} at {booking.booking_time}</Text>
+                                        <Text style={s.infoText}>
+                                            {safe(booking.booking_date)}
+                                            {booking.booking_time ? (' at ' + safe(booking.booking_time)) : ''}
+                                        </Text>
                                     </View>
 
-                                    {/* Guests & Cuisine */}
+                                    {/* Guests · Cuisine · Meal Type — all null-safe */}
                                     <View style={s.infoRow}>
                                         <Octicons name="people" size={14} color={TEXT_SOFT} />
-                                        <Text style={s.infoText}>{booking.number_of_people} guests · {booking.cuisine_type} · {booking.meal_type}</Text>
+                                        <Text style={s.infoText}>
+                                            {buildInfoLine(booking)}
+                                        </Text>
                                     </View>
 
+                                    {/* Meal-type mismatch warning (replaces Kitchen Assistant flag) */}
+                                    {renderMealConflict(booking)}
+
                                     {/* Total */}
-                                    {booking.total_cost && (
+                                    {booking.total_cost != null ? (
                                         <View style={s.infoRow}>
                                             <Octicons name="credit-card" size={14} color={TEXT_SOFT} />
                                             <Text style={[s.infoText, { fontWeight: '700', color: GREEN }]}>
-                                                ${booking.total_cost.toFixed(2)}
+                                                {'$' + Number(booking.total_cost).toFixed(2)}
                                             </Text>
                                         </View>
-                                    )}
+                                    ) : null}
 
                                     {/* Address */}
-                                    {booking.chef_address_line1 && (
+                                    {booking.chef_address_line1 ? (
                                         <View style={s.infoRow}>
                                             <Octicons name="location" size={14} color={TEXT_SOFT} />
                                             <Text style={s.infoText}>
-                                                {booking.chef_address_line1}, {booking.chef_city}, {booking.chef_state}
+                                                {[
+                                                    safe(booking.chef_address_line1),
+                                                    safe(booking.chef_city),
+                                                    safe(booking.chef_state),
+                                                ].filter(Boolean).join(', ')}
                                             </Text>
                                         </View>
-                                    )}
+                                    ) : null}
 
                                     {/* Special Notes */}
-                                    {booking.special_notes && (
+                                    {booking.special_notes ? (
                                         <View style={s.notesBox}>
                                             <Text style={s.notesLabel}>Special Notes</Text>
-                                            <Text style={s.notesText}>{booking.special_notes}</Text>
+                                            <Text style={s.notesText}>{safe(booking.special_notes)}</Text>
                                         </View>
-                                    )}
+                                    ) : null}
 
-                                    {/* Kitchen Assistant Button */}
-                                    {isUpcoming && (
+                                    {/* Kitchen Assistant */}
+                                    {isUpcoming ? (
                                         <TouchableOpacity
                                             style={s.assistantBtn}
                                             onPress={() => handleKitchenAssistant(booking)}
@@ -230,10 +317,10 @@ export default function ChefOrdersScreen() {
                                             <Octicons name="sparkle-fill" size={15} color={GREEN} style={{ marginRight: 7 }} />
                                             <Text style={s.assistantBtnText}>Kitchen Assistant</Text>
                                         </TouchableOpacity>
-                                    )}
+                                    ) : null}
 
-                                    {/* Action Buttons */}
-                                    {booking.status === 'pending' && (
+                                    {/* Accept / Decline */}
+                                    {booking.status === 'pending' ? (
                                         <View style={s.actionRow}>
                                             <TouchableOpacity
                                                 style={[s.actionBtn, s.actionBtnPrimary]}
@@ -250,8 +337,10 @@ export default function ChefOrdersScreen() {
                                                 <Text style={s.actionBtnSecondaryText}>Decline</Text>
                                             </TouchableOpacity>
                                         </View>
-                                    )}
-                                    {booking.status === 'accepted' && (
+                                    ) : null}
+
+                                    {/* Mark Complete */}
+                                    {booking.status === 'accepted' ? (
                                         <TouchableOpacity
                                             style={[s.actionBtn, s.actionBtnPrimary, { marginTop: 10 }]}
                                             onPress={() => updateBookingStatus(booking.booking_id, 'completed')}
@@ -259,7 +348,8 @@ export default function ChefOrdersScreen() {
                                         >
                                             <Text style={s.actionBtnPrimaryText}>Mark as Completed</Text>
                                         </TouchableOpacity>
-                                    )}
+                                    ) : null}
+
                                 </View>
                             </View>
                         );
@@ -275,7 +365,10 @@ export default function ChefOrdersScreen() {
 }
 
 const s = StyleSheet.create({
-    pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    pageHeader: {
+        flexDirection: 'row', alignItems: 'center',
+        justifyContent: 'space-between', marginBottom: 16,
+    },
     pageTitle: { fontSize: 28, fontWeight: '800', color: TEXT, letterSpacing: -0.5 },
     refreshBtn: {
         width: 38, height: 38, borderRadius: 19,
@@ -312,12 +405,22 @@ const s = StyleSheet.create({
     bookingBody: { padding: 14 },
     infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
     infoText: { fontSize: 13, color: TEXT_MID, flex: 1 },
+    conflictBox: {
+        flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+        backgroundColor: '#fef9c3', borderRadius: 10,
+        borderWidth: 1, borderColor: '#fde68a',
+        padding: 10, marginBottom: 8,
+    },
+    conflictText: { fontSize: 12, color: '#92400e', flex: 1, lineHeight: 17 },
     notesBox: {
         backgroundColor: '#fffbeb', borderRadius: 10,
         borderWidth: 1, borderColor: '#fde68a',
         padding: 10, marginTop: 4, marginBottom: 8,
     },
-    notesLabel: { fontSize: 11, fontWeight: '700', color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
+    notesLabel: {
+        fontSize: 11, fontWeight: '700', color: '#92400e',
+        textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4,
+    },
     notesText: { fontSize: 13, color: '#78350f' },
     assistantBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

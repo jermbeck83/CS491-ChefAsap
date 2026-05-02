@@ -30,9 +30,9 @@ export default function ChefCategory({
     const [savingCategory, setSavingCategory] = useState(false);
 
     const handleRenameCategory = async () => {
-        const trimmed = renameCategoryName.trim();
-        if (isNewDraft && !trimmed) { Alert.alert("Missing Name", "A section name is required."); return; }
-        if (!isNewDraft && (!trimmed || trimmed === categoryName)) { setEditing(false); return; }
+        const trimmed = (renameCategoryName || '').trim();
+        if (!trimmed) { Alert.alert("Missing Name", "A section name is required."); return; }
+        if (!isNewDraft && trimmed === categoryName) { setEditing(false); return; }
 
         if (isNewDraft) {
             try {
@@ -60,11 +60,18 @@ export default function ChefCategory({
                     body: JSON.stringify({ category_name: trimmed }),
                 });
                 const data = await response.json();
-                if (response.ok) { setCategoryName(trimmed); onCategoryUpdate(categoryId, 'PUT'); }
-                else Alert.alert('Error', data.error || 'Failed to rename category');
+                if (response.ok) {
+                    setCategoryName(trimmed);
+                    onCategoryUpdate(categoryId, 'PUT');
+                } else {
+                    Alert.alert('Error', data.error || 'Failed to rename category');
+                }
             } catch (err) {
                 Alert.alert('Error', 'Network error.');
-            } finally { setSavingCategory(false); setEditing(false); }
+            } finally {
+                setSavingCategory(false);
+                setEditing(false);
+            }
         }
     };
 
@@ -79,66 +86,122 @@ export default function ChefCategory({
                             method: 'DELETE',
                             headers: { 'Authorization': `Bearer ${token}` },
                         });
-                        if (response.ok) onCategoryUpdate(categoryId, 'DELETE');
-                        else { const d = await response.json(); Alert.alert('Error', d.error || 'Failed to delete'); }
-                    } catch (err) { Alert.alert('Error', 'Network error'); }
+                        if (response.ok) {
+                            onCategoryUpdate(categoryId, 'DELETE');
+                        } else {
+                            const d = await response.json();
+                            Alert.alert('Error', d.error || 'Failed to delete');
+                        }
+                    } catch (err) {
+                        Alert.alert('Error', 'Network error');
+                    }
                 }
             }
         ]);
     };
 
+    // ─── Header: editing mode ───────────────────────────────────────────────
+    const renderEditingHeader = () => (
+        <View style={s.editRow}>
+            <Input
+                value={renameCategoryName}
+                onChangeText={setRenameCategoryName}
+                placeholder="Category Name"
+                maxLength={100}
+                containerClasses="flex-1 mb-0 mr-2"
+            />
+            <TouchableOpacity
+                onPress={() => {
+                    if (isNewDraft) {
+                        onCategoryUpdate(categoryId, 'DELETE');
+                    } else {
+                        setRenameCategoryName(categoryName);
+                        setEditing(false);
+                    }
+                }}
+                style={s.iconBtn}
+            >
+                <Octicons name="x" size={16} color="#ef4444" />
+            </TouchableOpacity>
+            <TouchableOpacity
+                onPress={handleRenameCategory}
+                style={[s.iconBtn, { backgroundColor: GREEN_LIGHT }]}
+                disabled={savingCategory}
+            >
+                <Octicons name={savingCategory ? 'sync' : 'check'} size={16} color={GREEN} />
+            </TouchableOpacity>
+        </View>
+    );
+
+    // ─── Header: view mode ──────────────────────────────────────────────────
+    const renderViewHeader = () => (
+        <>
+            <TouchableOpacity
+                style={s.headerLeft}
+                onPress={() => setExpanded(!expanded)}
+                activeOpacity={0.7}
+            >
+                <Text style={s.headerText}>{categoryName}</Text>
+                <Octicons
+                    name={expanded ? 'chevron-up' : 'chevron-down'}
+                    size={16} color={TEXT_SOFT}
+                    style={{ marginLeft: 8 }}
+                />
+            </TouchableOpacity>
+            <View style={s.headerActions}>
+                <TouchableOpacity onPress={() => setEditing(true)} style={s.iconBtn}>
+                    <Octicons name="pencil" size={15} color={GREEN} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    onPress={handleDeleteCategory}
+                    style={[s.iconBtn, { backgroundColor: '#fff0f0' }]}
+                >
+                    <Octicons name="trash" size={15} color="#ef4444" />
+                </TouchableOpacity>
+            </View>
+        </>
+    );
+
+    // ─── Body (items + children / "Add Item" button) ────────────────────────
+    // Show body when:
+    //   • not a new draft AND expanded
+    //   • OR is a new draft (show children = the "Add Item" button immediately)
+    const showBody = isNewDraft || expanded;
+
     return (
         <View style={s.card}>
-            {/* Header */}
+            {/* ── Header ── */}
             <View style={s.header}>
-                {editing ? (
-                    <View style={s.editRow}>
-                        <Input
-                            value={renameCategoryName}
-                            onChangeText={setRenameCategoryName}
-                            placeholder="Category Name"
-                            maxLength={100}
-                            containerClasses="flex-1 mb-0 mr-2"
-                        />
-                        <TouchableOpacity onPress={() => { if (isNewDraft) { onCategoryUpdate(categoryId, 'DELETE'); } else { setRenameCategoryName(categoryName); setEditing(false); } }} style={s.iconBtn}>
-                            <Octicons name="x" size={16} color="#ef4444" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={handleRenameCategory} style={[s.iconBtn, { backgroundColor: GREEN_LIGHT }]} disabled={savingCategory}>
-                            <Octicons name={savingCategory ? 'sync' : 'check'} size={16} color={GREEN} />
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    <>
-                        <TouchableOpacity style={s.headerLeft} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-                            <Text style={s.headerText}>{categoryName}</Text>
-                            <Octicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={TEXT_SOFT} style={{ marginLeft: 8 }} />
-                        </TouchableOpacity>
-                        <View style={s.headerActions}>
-                            <TouchableOpacity onPress={() => setEditing(true)} style={s.iconBtn}>
-                                <Octicons name="pencil" size={15} color={GREEN} />
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={handleDeleteCategory} style={[s.iconBtn, { backgroundColor: '#fff0f0' }]}>
-                                <Octicons name="trash" size={15} color="#ef4444" />
-                            </TouchableOpacity>
-                        </View>
-                    </>
-                )}
+                {editing ? renderEditingHeader() : renderViewHeader()}
             </View>
 
-            {/* Body */}
-            {expanded && !isNewDraft && (
+            {/* ── Body ── */}
+            {showBody ? (
                 <View style={s.body}>
-                    {categoryItems.length > 0 ? (
-                        categoryItems.map(item => (
-                            <ChefMenuItem key={item.id} item={item} onItemUpdate={onItemUpdate}
-                                cuisineTypes={chefCuisineTypes || []} sectionId={categoryId} categories={categories} />
+                    {/* Don't show items while still in new-draft / naming mode */}
+                    {!isNewDraft && categoryItems.length > 0
+                        ? categoryItems.map(item => (
+                            <ChefMenuItem
+                                key={item.id}
+                                item={item}
+                                onItemUpdate={onItemUpdate}
+                                cuisineTypes={chefCuisineTypes || []}
+                                sectionId={categoryId}
+                                categories={categories}
+                            />
                         ))
-                    ) : (
+                        : null
+                    }
+
+                    {/* Empty-state text — only for saved (non-draft) categories */}
+                    {!isNewDraft && categoryItems.length === 0 ? (
                         <Text style={s.emptyText}>No items in this category yet</Text>
-                    )}
+                    ) : null}
+
+                    {/* children = AddItemButton or new ChefMenuItem draft */}
                     {children}
                 </View>
-            )}
+            ) : null}
         </View>
     );
 }

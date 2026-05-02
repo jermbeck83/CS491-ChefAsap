@@ -2,22 +2,45 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { ScrollView, Text, Alert, View, Modal, Image, TouchableOpacity, StyleSheet, TextInput } from "react-native";
 import { Octicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
-
 import LoadingIcon from "../components/LoadingIcon";
 import ProfilePicture from "../components/ProfilePicture";
 import RatingsDisplay from '../components/RatingsDisplay';
 
-const GREEN = '#2d6a4f';
+import { getCartConflicts, getMealTypeForHour, MEAL_TIME_WINDOWS } from '../../utils/mealTimeUtils';
+
+const GREEN       = '#2d6a4f';
 const GREEN_LIGHT = '#d8f3dc';
-const BG = '#fefce8';
-const BORDER = '#e2ece2';
-const TEXT = '#1a2e1a';
-const TEXT_MID = '#4a7c59';
-const TEXT_SOFT = '#8aab8a';
+const BG          = '#fefce8';
+const BORDER      = '#e2ece2';
+const TEXT        = '#1a2e1a';
+const TEXT_MID    = '#4a7c59';
+const TEXT_SOFT   = '#8aab8a';
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ── 4 fixed sections (mirrors chef side) ────────────────────────────────────
+const FIXED_SECTIONS = [
+    { id: 'Breakfast',   label: 'Breakfast',   subtitle: '6 AM – 11 AM',  color: '#fef9c3', textColor: '#92400e', mealType: 'Breakfast'  },
+    { id: 'Lunch',       label: 'Lunch',       subtitle: '11 AM – 3 PM',  color: '#dcfce7', textColor: '#166534', mealType: 'Lunch'      },
+    { id: 'Dinner',      label: 'Dinner',      subtitle: '5 PM – 11 PM',  color: '#ede9fe', textColor: '#5b21b6', mealType: 'Dinner'     },
+    { id: 'Specialties', label: 'Specialties', subtitle: 'Any time',      color: GREEN_LIGHT, textColor: GREEN,   mealType: 'Any'        },
+];
+
+const getSectionForItem = (item) => {
+    if (!item) return null;
+    if (item.meal_type === 'Breakfast') return FIXED_SECTIONS[0];
+    if (item.meal_type === 'Lunch')     return FIXED_SECTIONS[1];
+    if (item.meal_type === 'Dinner')    return FIXED_SECTIONS[2];
+    if (item.meal_type === 'Any')       return FIXED_SECTIONS[3];
+    // fallback: category_name
+    const byName = FIXED_SECTIONS.find(s => s.id === item.category_name);
+    if (byName) return byName;
+    return null; // will go into "Other" bucket
+};
 
 const getImageSource = (photoUrl, apiUrl) => {
     if (!photoUrl) return null;
@@ -31,40 +54,76 @@ const parseZipFromLocation = (locationText) => {
     return match ? match[0] : '';
 };
 
+const getDefaultBookingDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return { month: tomorrow.getMonth(), day: tomorrow.getDate(), year: tomorrow.getFullYear(), hour: 12, minute: 0 };
+};
+
+// ── Stepper (local, no className) ────────────────────────────────────────────
+const Stepper = ({ label, value, onDecrement, onIncrement }) => (
+    <View style={{ alignItems: 'center', flex: 1 }}>
+        <Text style={st.stepperLabel}>{label}</Text>
+        <View style={st.stepperRow}>
+            <TouchableOpacity style={st.stepperBtn} onPress={onDecrement} activeOpacity={0.7}>
+                <Text style={st.stepperBtnTxt}>−</Text>
+            </TouchableOpacity>
+            <Text style={st.stepperVal}>{value}</Text>
+            <TouchableOpacity style={st.stepperBtn} onPress={onIncrement} activeOpacity={0.7}>
+                <Text style={st.stepperBtnTxt}>+</Text>
+            </TouchableOpacity>
+        </View>
+    </View>
+);
+
+// ── Menu item card (customer view) ───────────────────────────────────────────
 const MenuItemCard = ({ item, onAddToOrder, apiUrl, userType }) => {
-    const imgSrc = getImageSource(item?.photo_url, apiUrl);
+    const imgSrc  = getImageSource(item?.photo_url, apiUrl);
     const canOrder = userType !== 'chef' && item?.is_available;
+    const section  = getSectionForItem(item);
 
     return (
-        <View style={s.menuCard}>
-            <Text style={s.menuItemName}>{item?.dish_name || 'Dish Name'}</Text>
-            <View style={s.menuItemBody}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                    {item?.description ? <Text style={s.menuItemDesc}>{item.description}</Text> : null}
-                    {item?.servings ? <Text style={s.menuItemMeta}>Servings: {item.servings}</Text> : null}
-                    {item?.spice_level ? <Text style={s.menuItemMeta}>Spice Level: {item.spice_level}</Text> : null}
+        <View style={st.menuCard}>
+            <Text style={st.menuItemName}>{item?.dish_name || 'Dish Name'}</Text>
+
+            {/* Section / meal-type badge */}
+            {section ? (
+                <View style={[st.mealBadge, { backgroundColor: section.color }]}>
+                    <Text style={[st.mealBadgeTxt, { color: section.textColor }]}>
+                        {section.label + ' · ' + section.subtitle}
+                    </Text>
                 </View>
-                <View style={{ width: 130 }}>
+            ) : null}
+
+            <View style={st.menuItemBody}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                    {item?.description  ? <Text style={st.menuItemDesc}>{item.description}</Text>  : null}
+                    {item?.servings     ? <Text style={st.menuItemMeta}>{'Servings: ' + item.servings}</Text>   : null}
+                    {item?.spice_level  ? <Text style={st.menuItemMeta}>{'Spice: ' + item.spice_level}</Text>   : null}
+                </View>
+                <View style={{ width: 120 }}>
                     {imgSrc ? (
-                        <Image source={imgSrc} style={s.menuItemImage} resizeMode="cover" />
+                        <Image source={imgSrc} style={st.menuItemImage} resizeMode="cover" />
                     ) : (
-                        <View style={[s.menuItemImage, s.menuItemImageEmpty]}>
-                            <Text style={s.menuItemImageEmptyText}>NO IMAGE</Text>
+                        <View style={[st.menuItemImage, st.menuItemImageEmpty]}>
+                            <Text style={st.menuItemImageEmptyTxt}>NO IMAGE</Text>
                         </View>
                     )}
                 </View>
             </View>
-            <View style={s.menuItemFooter}>
-                {item?.prep_time ? <Text style={s.menuItemFooterMeta}>Prep time: {item.prep_time} min</Text> : null}
-                {item?.price ? <Text style={s.menuItemPrice}>${item.price.toFixed(2)}</Text> : null}
+
+            <View style={st.menuItemFooter}>
+                {item?.prep_time != null ? <Text style={st.menuItemFooterMeta}>{'Prep: ' + item.prep_time + ' min'}</Text> : null}
+                {item?.price     != null ? <Text style={st.menuItemPrice}>{'$' + Number(item.price).toFixed(2)}</Text>     : null}
             </View>
+
             <TouchableOpacity
-                style={[s.addBtn, !canOrder && s.addBtnDisabled]}
-                onPress={() => onAddToOrder && onAddToOrder(item)}
+                style={[st.addBtn, !canOrder && st.addBtnDisabled]}
+                onPress={() => canOrder && onAddToOrder?.(item)}
                 disabled={!canOrder}
                 activeOpacity={0.85}
             >
-                <Text style={[s.addBtnText, !canOrder && s.addBtnTextDisabled]}>
+                <Text style={[st.addBtnTxt, !canOrder && st.addBtnTxtDisabled]}>
                     {item?.is_available ? 'Add to order' : 'Not available'}
                 </Text>
             </TouchableOpacity>
@@ -72,251 +131,303 @@ const MenuItemCard = ({ item, onAddToOrder, apiUrl, userType }) => {
     );
 };
 
-const SectionCard = ({ title, children, defaultExpanded = true }) => {
+// ── Collapsible section card ─────────────────────────────────────────────────
+const SectionCard = ({ section, items, onAddToOrder, apiUrl, userType, defaultExpanded = true }) => {
     const [expanded, setExpanded] = useState(defaultExpanded);
+    if (!items.length) return null;   // hide empty sections on customer side
+
     return (
-        <View style={s.sectionCard}>
-            <TouchableOpacity style={s.sectionHeader} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-                <Text style={s.sectionTitle}>{title}</Text>
-                <Octicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={TEXT_SOFT} />
+        <View style={st.sectionCard}>
+            <TouchableOpacity
+                style={[st.sectionHeader, { backgroundColor: section.color }]}
+                onPress={() => setExpanded(!expanded)}
+                activeOpacity={0.8}
+            >
+                <View>
+                    <Text style={[st.sectionTitle, { color: section.textColor }]}>{section.label}</Text>
+                    <Text style={[st.sectionSub,   { color: section.textColor }]}>{section.subtitle}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={[st.sectionCount, { borderColor: section.textColor }]}>
+                        <Text style={[st.sectionCountTxt, { color: section.textColor }]}>
+                            {items.length + ' item' + (items.length !== 1 ? 's' : '')}
+                        </Text>
+                    </View>
+                    <Octicons
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={section.textColor}
+                    />
+                </View>
             </TouchableOpacity>
-            {expanded && <View style={s.sectionBody}>{children}</View>}
+            {expanded ? (
+                <View style={st.sectionBody}>
+                    {items.map(item => (
+                        <MenuItemCard
+                            key={item.id}
+                            item={item}
+                            onAddToOrder={onAddToOrder}
+                            apiUrl={apiUrl}
+                            userType={userType}
+                        />
+                    ))}
+                </View>
+            ) : null}
         </View>
     );
 };
 
+// ── Main screen ──────────────────────────────────────────────────────────────
 export default function ChefMenu() {
     const { id } = useLocalSearchParams();
-    const router = useRouter();
+    const router  = useRouter();
+    const insets  = useSafeAreaInsets();
     const { token, userId, profileId, userType } = useAuth();
     const { apiUrl } = getEnvVars();
 
-    const [chefData, setChefData] = useState(null);
-    const [menuItems, setMenuItems] = useState([]);
-    const [featuredItems, setFeaturedItems] = useState([]);
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [orderItems, setOrderItems] = useState([]);
-
-    const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-    const [selectedDay, setSelectedDay] = useState(new Date().getDate());
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [selectedHour, setSelectedHour] = useState(12);
-    const [selectedMinute, setSelectedMinute] = useState(0);
+    const [chefData,     setChefData]     = useState(null);
+    const [menuItems,    setMenuItems]    = useState([]);
+    const [featuredItems,setFeaturedItems]= useState([]);
+    const [loading,      setLoading]      = useState(true);
+    const [orderItems,   setOrderItems]   = useState([]);
     const [showOrderModal, setShowOrderModal] = useState(false);
 
-    const [paymentMethods, setPaymentMethods] = useState([]);
+    const defaults = getDefaultBookingDate();
+    const [selectedMonth,  setSelectedMonth]  = useState(defaults.month);
+    const [selectedDay,    setSelectedDay]    = useState(defaults.day);
+    const [selectedYear,   setSelectedYear]   = useState(defaults.year);
+    const [selectedHour,   setSelectedHour]   = useState(defaults.hour);
+    const [selectedMinute, setSelectedMinute] = useState(defaults.minute);
+
+    const [paymentMethods,        setPaymentMethods]        = useState([]);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
-    const [paymentProcessing, setPaymentProcessing] = useState(false);
-    const [pricingQuote, setPricingQuote] = useState(null);
-    const [pricingLoading, setPricingLoading] = useState(false);
-    const [eventZip, setEventZip] = useState('');
+    const [paymentProcessing,     setPaymentProcessing]     = useState(false);
+    const [pricingQuote,          setPricingQuote]          = useState(null);
+    const [pricingLoading,        setPricingLoading]        = useState(false);
+    const [eventZip,              setEventZip]              = useState('');
     const hasShownSurgeAlertRef = useRef(false);
 
+    const now = new Date();
+    const currentYear  = now.getFullYear();
+    const isCurrentYear  = selectedYear  === currentYear;
+    const isCurrentMonth = isCurrentYear && selectedMonth === now.getMonth();
+    const isToday        = isCurrentMonth && selectedDay  === now.getDate();
+    const minMonth = isCurrentYear ? now.getMonth() : 0;
+    const minDay   = isCurrentMonth ? now.getDate()  : 1;
+    const minHour  = isToday ? now.getHours() + 1   : 0;
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+
+    // Date/time stepper handlers
+    const handleMonthDec = () => {
+        if (selectedMonth <= minMonth && isCurrentYear) return;
+        const m = selectedMonth - 1;
+        setSelectedMonth(m);
+        const max = new Date(selectedYear, m + 1, 0).getDate();
+        if (selectedDay > max) setSelectedDay(max);
+    };
+    const handleMonthInc = () => {
+        if (selectedMonth >= 11) return;
+        const m = selectedMonth + 1;
+        setSelectedMonth(m);
+        const max = new Date(selectedYear, m + 1, 0).getDate();
+        if (selectedDay > max) setSelectedDay(max);
+    };
+    const handleDayDec  = () => { if (selectedDay   > minDay)       setSelectedDay(selectedDay - 1); };
+    const handleDayInc  = () => { if (selectedDay   < daysInMonth)  setSelectedDay(selectedDay + 1); };
+    const handleYearDec = () => { if (selectedYear  > currentYear)  setSelectedYear(selectedYear - 1); };
+    const handleYearInc = () => { if (selectedYear  < currentYear+2) setSelectedYear(selectedYear + 1); };
+    const handleHourDec = () => { if (selectedHour  > minHour)      setSelectedHour(selectedHour - 1); };
+    const handleHourInc = () => { if (selectedHour  < 23)           setSelectedHour(selectedHour + 1); };
+    const handleMinDec  = () => {
+        const mins = [0,15,30,45]; const i = mins.indexOf(selectedMinute);
+        if (i > 0) setSelectedMinute(mins[i-1]);
+    };
+    const handleMinInc  = () => {
+        const mins = [0,15,30,45]; const i = mins.indexOf(selectedMinute);
+        if (i < 3) setSelectedMinute(mins[i+1]);
+    };
+
+    // Fetch chef + menu data
     useEffect(() => {
         if (!id) return;
         const chefId = parseInt(id, 10);
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [profileRes, menuRes, featuredRes, catRes] = await Promise.all([
-                    fetch(`${apiUrl}/profile/chef/${chefId}/public`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${apiUrl}/api/menu/chef/${chefId}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
+                const [profileRes, menuRes, featuredRes] = await Promise.all([
+                    fetch(`${apiUrl}/profile/chef/${chefId}/public`,    { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${apiUrl}/api/menu/chef/${chefId}`,          { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
                     fetch(`${apiUrl}/api/menu/chef/${chefId}/featured`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${apiUrl}/api/menu/chef/${chefId}/categories`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } }),
                 ]);
-                const [profileData, menuData, featuredData, catData] = await Promise.all([profileRes.json(), menuRes.json(), featuredRes.json(), catRes.json()]);
-                if (profileRes.ok) setChefData(profileData.profile);
-                if (menuRes.ok) setMenuItems(menuData.menu_items || []);
+                const [profileData, menuData, featuredData] = await Promise.all([
+                    profileRes.json(), menuRes.json(), featuredRes.json(),
+                ]);
+                if (profileRes.ok)  setChefData(profileData.profile);
+                if (menuRes.ok)     setMenuItems(menuData.menu_items    || []);
                 if (featuredRes.ok) setFeaturedItems(featuredData.featured_items || []);
-                if (catRes.ok) setCategories(catData.categories || []);
-            } catch (err) {
-                Alert.alert('Error', 'Network error. Could not load menu.');
-            } finally { setLoading(false); }
+            } catch { Alert.alert('Error', 'Network error. Could not load menu.'); }
+            finally { setLoading(false); }
         };
         fetchData();
     }, [id, apiUrl, token]);
 
-    const itemsByCategory = useMemo(() => {
+    // Group items into 4 fixed sections
+    const itemsBySection = useMemo(() => {
         const grouped = {};
-        categories.forEach(cat => { grouped[cat.id] = { name: cat.category_name, items: [] }; });
-        grouped['uncategorized'] = { name: 'Other Dishes', items: [] };
+        FIXED_SECTIONS.forEach(sec => { grouped[sec.id] = []; });
+        grouped['other'] = [];
         menuItems.forEach(item => {
-            if (item.category_id && grouped[item.category_id]) grouped[item.category_id].items.push(item);
-            else grouped['uncategorized'].items.push(item);
+            const sec = getSectionForItem(item);
+            if (sec) grouped[sec.id].push(item);
+            else     grouped['other'].push(item);
         });
         return grouped;
-    }, [menuItems, categories]);
+    }, [menuItems]);
 
     const handleAddToOrder = (item) => {
-        if (!item.is_available) { Alert.alert('Not Available', 'This dish is currently not available.'); return; }
+        if (!item.is_available) { Alert.alert('Not Available', 'This dish is currently unavailable.'); return; }
         const existing = orderItems.find(o => o.id === item.id);
-        if (existing) {
-            setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
-        } else {
-            setOrderItems([...orderItems, { ...item, quantity: 1 }]);
-        }
+        if (existing) setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
+        else          setOrderItems([...orderItems, { ...item, quantity: 1 }]);
+    };
+
+    const handleQtyDec = (item) => {
+        if (item.quantity > 1) setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity - 1 } : o));
+        else                   setOrderItems(orderItems.filter(o => o.id !== item.id));
+    };
+    const handleQtyInc = (item) => {
+        setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
     };
 
     const fetchPaymentMethods = async () => {
-        const userIdToUse = userId || profileId;
-        if (!userIdToUse) return;
+        const uid = userId || profileId;
+        if (!uid) return;
         setLoadingPaymentMethods(true);
         try {
-            const response = await fetch(`${apiUrl}/stripe-payment/payment-methods?customer_id=${userIdToUse}`, {
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            });
-            const data = await response.json();
-            if (response.ok) {
+            const res  = await fetch(`${apiUrl}/stripe-payment/payment-methods?customer_id=${uid}`, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` } });
+            const data = await res.json();
+            if (res.ok) {
                 setPaymentMethods(data.payment_methods || []);
                 const def = data.payment_methods?.find(pm => pm.is_default);
                 if (def) setSelectedPaymentMethod(def.id);
             }
-        } catch (e) {} finally { setLoadingPaymentMethods(false); }
+        } catch {} finally { setLoadingPaymentMethods(false); }
     };
 
     useEffect(() => { if (showOrderModal && userType === 'customer') fetchPaymentMethods(); }, [showOrderModal]);
+    useEffect(() => { if (chefData?.public_location) setEventZip(parseZipFromLocation(chefData.public_location)); }, [chefData?.public_location]);
 
-    useEffect(() => {
-        if (chefData?.public_location) {
-            setEventZip(parseZipFromLocation(chefData.public_location));
-        }
-    }, [chefData?.public_location]);
+    // Live meal-time conflict detection
+    const mealConflicts = useMemo(() => {
+        const bookingTime = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
+        return getCartConflicts(orderItems, bookingTime);
+    }, [orderItems, selectedHour, selectedYear, selectedMonth, selectedDay, selectedMinute]);
 
-    const getMealType = (hour) => {
-        if (hour >= 5 && hour < 11) return 'breakfast';
-        if (hour >= 11 && hour < 16) return 'lunch';
-        return 'dinner';
-    };
+    const currentMealType = getMealTypeForHour(selectedHour);
 
-    const handlePlaceOrder = async () => {
-        if (!selectedPaymentMethod) { Alert.alert('Payment Required', 'Please select a payment method.'); return; }
-        setPaymentProcessing(true);
-        try {
-            const deliveryDateTime = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
-            const baseTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const quoteMultiplier = Number(pricingQuote?.multiplier || 1);
-            const dynamicTotal = Number(pricingQuote?.final_price || baseTotal);
-            const payableTotal = dynamicTotal > 0 ? dynamicTotal : baseTotal;
-
-            const bookingResponse = await fetch(`${apiUrl}/booking/create`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({
-                    customer_id: profileId,
-                    cuisine_type: orderItems[0]?.cuisine_type || 'Mixed',
-                    meal_type: getMealType(selectedHour),
-                    event_type: 'dinner',
-                    booking_date: deliveryDateTime.toISOString().split('T')[0],
-                    booking_time: deliveryDateTime.toTimeString().split(' ')[0].substring(0, 5),
-                    produce_supply: 'chef',
-                    number_of_people: orderItems.reduce((sum, item) => sum + item.quantity, 0),
-                    base_price: Number(baseTotal.toFixed(2)),
-                    dynamic_price: Number(payableTotal.toFixed(2)),
-                    pricing_multiplier: Number(quoteMultiplier.toFixed(2)),
-                    pricing_features: pricingQuote?.features_logged || {},
-                    total_cost: Number(payableTotal.toFixed(2)),
-                    special_notes: `Order: ${orderItems.map(i => `${i.dish_name} (x${i.quantity})`).join(', ')}. Total: $${payableTotal.toFixed(2)}.`
-                }),
-            });
-            const bookingResult = await bookingResponse.json();
-            if (!bookingResponse.ok) { Alert.alert('Booking Error', bookingResult.error || 'Booking failed.'); setPaymentProcessing(false); return; }
-
-            const bookChefResponse = await fetch(`${apiUrl}/booking/book-chef`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ booking_id: bookingResult.booking_id, chef_id: parseInt(id, 10) }),
-            });
-            const bookChefResult = await bookChefResponse.json();
-            if (!bookChefResponse.ok) { Alert.alert('Booking Error', bookChefResult.error || 'Chef booking failed.'); setPaymentProcessing(false); return; }
-         
-            console.log('Sending payment with booking_id:', bookingResult.booking_id, 'token:', token?.substring(0, 20));
-            const paymentResponse = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ 
-                    booking_id: bookingResult.booking_id,
-                    customer_id: userId || profileId,
-                    payment_method_id: selectedPaymentMethod
-                 }),
-            });
-            const paymentData = await paymentResponse.json();
-            if (paymentResponse.status === 403) {
-                Alert.alert('Transaction Declined', 'Flagged for suspicious activity. Please contact support.');
-                setPaymentProcessing(false);
-                return;
-            }
-            if (!paymentResponse.ok) { Alert.alert('Payment Failed', paymentData.error || 'Failed to process payment.'); setPaymentProcessing(false); return; }
-
-            setShowOrderModal(false);
-            setPaymentProcessing(false);
-            const selectedCard = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
-            Alert.alert('Booking Confirmed! 🎉',
-                `Booking #${bookingResult.booking_id}\nAmount: $${payableTotal.toFixed(2)}\nCard: ${selectedCard?.brand?.toUpperCase()} •••• ${selectedCard?.last4}\nDelivery: ${deliveryDateTime.toLocaleString('en-US')}`,
-                [{ text: 'OK', onPress: () => { setOrderItems([]); setSelectedPaymentMethod(null); } }]
-            );
-        } catch (error) { Alert.alert('Error', 'Network error.'); setPaymentProcessing(false); }
-    };
-
-    const orderTotal = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const quoteFinal = Number(pricingQuote?.final_price || orderTotal);
-    const quoteMultiplier = Number(pricingQuote?.multiplier || 1);
-    const rushFee = Math.max(0, quoteFinal - orderTotal);
-
+    // Dynamic pricing
     useEffect(() => {
         if (!showOrderModal || !orderItems.length || !eventZip || !profileId) return;
-
         const eventDate = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
         const basePrice = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        if (!basePrice || Number.isNaN(basePrice)) return;
-
+        if (!basePrice || isNaN(basePrice)) return;
         let isMounted = true;
-        const timeoutId = setTimeout(async () => {
+        const tid = setTimeout(async () => {
             setPricingLoading(true);
             try {
-                const response = await fetch(`${apiUrl}/api/v1/pricing/quote`, {
+                const res  = await fetch(`${apiUrl}/api/v1/pricing/quote`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({
-                        base_price: Number(basePrice.toFixed(2)),
-                        event_date: eventDate.toISOString(),
-                        location_zip: eventZip,
-                        chef_id: Number(id),
-                        customer_id: profileId,
-                    }),
+                    body: JSON.stringify({ base_price: Number(basePrice.toFixed(2)), event_date: eventDate.toISOString(), location_zip: eventZip, chef_id: Number(id), customer_id: profileId }),
                 });
-                const data = await response.json();
+                const data = await res.json();
                 if (!isMounted) return;
-                if (response.ok && data?.quote) {
+                if (res.ok && data?.quote) {
                     setPricingQuote(data.quote);
                     if (Number(data.quote.multiplier) > 1.0 && !hasShownSurgeAlertRef.current) {
                         hasShownSurgeAlertRef.current = true;
                         const fee = Math.max(0, Number(data.quote.final_price || basePrice) - basePrice);
-                        Alert.alert('High Demand Pricing', `High Demand: $${fee.toFixed(2)} rush fee applied.`);
+                        Alert.alert('High Demand Pricing', `Rush fee of $${fee.toFixed(2)} applied.`);
                     }
-                    if (Number(data.quote.multiplier) <= 1.0) {
-                        hasShownSurgeAlertRef.current = false;
-                    }
+                    if (Number(data.quote.multiplier) <= 1.0) hasShownSurgeAlertRef.current = false;
                 }
-            } catch (_) {
-                // Pricing is best-effort; checkout can still continue at base price.
-            } finally {
-                if (isMounted) setPricingLoading(false);
-            }
+            } catch {}
+            finally { if (isMounted) setPricingLoading(false); }
         }, 350);
+        return () => { isMounted = false; clearTimeout(tid); };
+    }, [showOrderModal, selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute, eventZip, orderItems]);
 
-        return () => {
-            isMounted = false;
-            clearTimeout(timeoutId);
-        };
-    }, [showOrderModal, selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute, eventZip, orderItems, apiUrl, token, id, profileId]);
+    const handlePlaceOrder = async () => {
+        if (!selectedPaymentMethod) { Alert.alert('Payment Required', 'Please select a payment method.'); return; }
+        const selected = new Date(selectedYear, selectedMonth, selectedDay, selectedHour, selectedMinute);
+        if (selected <= new Date()) { Alert.alert('Invalid Date', 'Please select a future date and time.'); return; }
+        if (mealConflicts.length > 0) {
+            const lines = mealConflicts.map(c => '• ' + c.item.dish_name + ': ' + c.mealType + ' only (' + c.allowedLabel + ')').join('\n');
+            Alert.alert('Meal Time Mismatch', 'Some items can\'t be served at this time:\n\n' + lines + '\n\nAdjust your booking time or remove the conflicting items.');
+            return;
+        }
+        setPaymentProcessing(true);
+        try {
+            const baseTotal    = orderItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const quoteMult    = Number(pricingQuote?.multiplier || 1);
+            const dynamicTotal = Number(pricingQuote?.final_price || baseTotal);
+            const payableTotal = dynamicTotal > 0 ? dynamicTotal : baseTotal;
+
+            const bookRes  = await fetch(`${apiUrl}/booking/create`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({
+                    customer_id: profileId, cuisine_type: orderItems[0]?.cuisine_type || 'Mixed',
+                    meal_type: currentMealType, event_type: 'dinner',
+                    booking_date: selected.toISOString().split('T')[0],
+                    booking_time: selected.toTimeString().split(' ')[0].substring(0, 5),
+                    produce_supply: 'chef', number_of_people: orderItems.reduce((s, i) => s + i.quantity, 0),
+                    base_price: Number(baseTotal.toFixed(2)), dynamic_price: Number(payableTotal.toFixed(2)),
+                    pricing_multiplier: Number(quoteMult.toFixed(2)), pricing_features: pricingQuote?.features_logged || {},
+                    total_cost: Number(payableTotal.toFixed(2)),
+                    special_notes: 'Order: ' + orderItems.map(i => i.dish_name + ' (x' + i.quantity + ')').join(', ') + '. Total: $' + payableTotal.toFixed(2) + '.',
+                    menu_item_ids: orderItems.map(i => i.id),
+                }),
+            });
+            const bookResult = await bookRes.json();
+            if (!bookRes.ok) { Alert.alert('Booking Error', bookResult.error || 'Booking failed.'); setPaymentProcessing(false); return; }
+
+            const chefRes  = await fetch(`${apiUrl}/booking/book-chef`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ booking_id: bookResult.booking_id, chef_id: parseInt(id, 10) }),
+            });
+            const chefResult = await chefRes.json();
+            if (!chefRes.ok) { Alert.alert('Booking Error', chefResult.error || 'Chef booking failed.'); setPaymentProcessing(false); return; }
+
+            const payRes  = await fetch(`${apiUrl}/stripe-payment/create-payment-intent`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ booking_id: bookResult.booking_id, customer_id: userId || profileId, payment_method_id: selectedPaymentMethod }),
+            });
+            const payData = await payRes.json();
+            if (payRes.status === 403) { Alert.alert('Transaction Declined', 'Flagged for suspicious activity. Contact support.'); setPaymentProcessing(false); return; }
+            if (!payRes.ok) { Alert.alert('Payment Failed', payData.error || 'Payment failed.'); setPaymentProcessing(false); return; }
+
+            setShowOrderModal(false);
+            setPaymentProcessing(false);
+            const card = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
+            Alert.alert('Booking Confirmed! 🎉',
+                'Booking #' + bookResult.booking_id + '\nAmount: $' + payableTotal.toFixed(2) + '\nCard: ' + card?.brand?.toUpperCase() + ' •••• ' + card?.last4 + '\nDate: ' + selected.toLocaleString('en-US'),
+                [{ text: 'OK', onPress: () => { setOrderItems([]); setSelectedPaymentMethod(null); } }]
+            );
+        } catch { Alert.alert('Error', 'Network error.'); setPaymentProcessing(false); }
+    };
+
+    const orderTotal    = orderItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+    const quoteFinal    = Number(pricingQuote?.final_price || orderTotal);
+    const quoteMult     = Number(pricingQuote?.multiplier  || 1);
+    const rushFee       = Math.max(0, quoteFinal - orderTotal);
+    const formattedDT   = MONTHS_SHORT[selectedMonth] + ' ' + String(selectedDay).padStart(2,'0') + ', ' + selectedYear + '  ' + String(selectedHour).padStart(2,'0') + ':' + String(selectedMinute).padStart(2,'00');
 
     if (loading) {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View style={[s.screen, { justifyContent: 'center', alignItems: 'center' }]}>
+                <View style={[st.screen, { justifyContent: 'center', alignItems: 'center' }]}>
                     <LoadingIcon message="Loading Chef Menu..." />
                 </View>
             </>
@@ -326,226 +437,248 @@ export default function ChefMenu() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: BG } }} />
-            <ScrollView style={s.screen} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
+            <ScrollView style={st.screen} contentContainerStyle={{ paddingTop: insets.top + 10, padding: 20, paddingBottom: 40 }}>
 
-                {/* Chef Header */}
-                <View style={s.chefHeader}>
-                    <View style={s.chefHeaderTop}>
+                {/* Chef header */}
+                <View style={st.chefHeader}>
+                    <View style={st.chefHeaderTop}>
                         <View style={{ flex: 1 }}>
-                            <Text style={s.chefName}>{chefData?.first_name} {chefData?.last_name}</Text>
-                            {chefData?.meal_timings?.length > 0 && (
-                                <Text style={s.chefAvail}>Available: {chefData.meal_timings.join(', ')}</Text>
-                            )}
+                            <Text style={st.chefName}>{(chefData?.first_name || '') + ' ' + (chefData?.last_name || '')}</Text>
+                            {chefData?.meal_timings?.length > 0 ? (
+                                <Text style={st.chefAvail}>{'Available: ' + chefData.meal_timings.join(', ')}</Text>
+                            ) : null}
                         </View>
                         <ProfilePicture photoUrl={chefData?.photo_url} firstName={chefData?.first_name} lastName={chefData?.last_name} size={18} />
                     </View>
-                    <View style={s.chefHeaderBottom}>
+                    <View style={st.chefHeaderBottom}>
                         <RatingsDisplay rating={chefData?.average_rating} />
-                        {chefData?.cuisines?.length > 0 && (
-                            <View style={s.cuisineRow}>
+                        {chefData?.cuisines?.length > 0 ? (
+                            <View style={st.cuisineRow}>
                                 {chefData.cuisines.slice(0, 4).map((c, i) => (
-                                    <View key={i} style={s.cuisineTag}><Text style={s.cuisineTagText}>{c}</Text></View>
+                                    <View key={i} style={st.cuisineTag}>
+                                        <Text style={st.cuisineTagTxt}>{c}</Text>
+                                    </View>
                                 ))}
                             </View>
-                        )}
-                        <Text style={s.lastUpdated}>Last Updated: {chefData?.member_since}</Text>
+                        ) : null}
+                        <Text style={st.lastUpdated}>{'Last Updated: ' + (chefData?.member_since || '')}</Text>
                     </View>
                 </View>
 
-                {/* Featured Dishes */}
-                {featuredItems.length > 0 && (
-                    <SectionCard title="Featured Dishes" defaultExpanded={true}>
-                        {featuredItems.map(item => <MenuItemCard key={item.id} item={item} onAddToOrder={handleAddToOrder} apiUrl={apiUrl} userType={userType} />)}
-                    </SectionCard>
-                )}
-
-                {/* Categories */}
-                {categories.map(category => {
-                    const items = itemsByCategory[category.id]?.items || [];
-                    if (items.length === 0) return null;
-                    return (
-                        <SectionCard key={category.id} title={category.category_name} defaultExpanded={false}>
-                            {items.map(item => <MenuItemCard key={item.id} item={item} onAddToOrder={handleAddToOrder} apiUrl={apiUrl} userType={userType} />)}
-                        </SectionCard>
-                    );
-                })}
-
-                {/* Uncategorized */}
-                {itemsByCategory['uncategorized']?.items?.length > 0 && (
-                    <SectionCard title="Other Dishes" defaultExpanded={false}>
-                        {itemsByCategory['uncategorized'].items.map(item => <MenuItemCard key={item.id} item={item} onAddToOrder={handleAddToOrder} apiUrl={apiUrl} userType={userType} />)}
-                    </SectionCard>
-                )}
-
-                {menuItems.length === 0 && (
-                    <View style={s.sectionCard}>
-                        <Text style={[s.menuItemDesc, { textAlign: 'center', padding: 24 }]}>No menu items available yet</Text>
-                    </View>
-                )}
-
-                {/* Order Summary */}
-                {orderItems.length > 0 && (
-                    <View style={[s.sectionCard, { borderColor: GREEN, borderWidth: 2 }]}>
-                        <View style={s.sectionHeader}>
-                            <Text style={s.sectionTitle}>My Selection ({orderItems.length} {orderItems.length === 1 ? 'item' : 'items'})</Text>
+                {/* Featured dishes */}
+                {featuredItems.length > 0 ? (
+                    <View style={st.sectionCard}>
+                        <TouchableOpacity style={[st.sectionHeader, { backgroundColor: '#fff' }]} activeOpacity={1}>
+                            <View>
+                                <Text style={[st.sectionTitle, { color: TEXT }]}>⭐ Featured Dishes</Text>
+                            </View>
+                            <View style={[st.sectionCount, { borderColor: TEXT_SOFT }]}>
+                                <Text style={[st.sectionCountTxt, { color: TEXT_SOFT }]}>
+                                    {featuredItems.length + ' item' + (featuredItems.length !== 1 ? 's' : '')}
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+                        <View style={st.sectionBody}>
+                            {featuredItems.map(item => (
+                                <MenuItemCard key={item.id} item={item} onAddToOrder={handleAddToOrder} apiUrl={apiUrl} userType={userType} />
+                            ))}
                         </View>
-                        <View style={s.sectionBody}>
-                            {orderItems.map((item, index) => (
-                                <View key={index} style={s.orderRow}>
+                    </View>
+                ) : null}
+
+                {/* 4 fixed sections — only renders if they have items */}
+                {FIXED_SECTIONS.map((section, idx) => (
+                    <SectionCard
+                        key={section.id}
+                        section={section}
+                        items={itemsBySection[section.id] || []}
+                        onAddToOrder={handleAddToOrder}
+                        apiUrl={apiUrl}
+                        userType={userType}
+                        defaultExpanded={idx === 0}
+                    />
+                ))}
+
+                {/* Other / uncategorised items */}
+                {itemsBySection['other']?.length > 0 ? (
+                    <SectionCard
+                        section={{ id: 'other', label: 'Other Dishes', subtitle: 'Various', color: '#f8faf8', textColor: TEXT_MID }}
+                        items={itemsBySection['other']}
+                        onAddToOrder={handleAddToOrder}
+                        apiUrl={apiUrl}
+                        userType={userType}
+                        defaultExpanded={false}
+                    />
+                ) : null}
+
+                {menuItems.length === 0 ? (
+                    <View style={st.emptyCard}>
+                        <Text style={st.emptyTxt}>No menu items available yet</Text>
+                    </View>
+                ) : null}
+
+                {/* Order summary */}
+                {orderItems.length > 0 ? (
+                    <View style={[st.sectionCard, { borderColor: GREEN, borderWidth: 2 }]}>
+                        <View style={[st.sectionHeader, { backgroundColor: GREEN_LIGHT }]}>
+                            <Text style={[st.sectionTitle, { color: GREEN }]}>
+                                {'My Selection (' + orderItems.length + ' ' + (orderItems.length === 1 ? 'item' : 'items') + ')'}
+                            </Text>
+                        </View>
+                        <View style={st.sectionBody}>
+                            {orderItems.map((item, idx) => (
+                                <View key={idx} style={st.orderRow}>
                                     <View style={{ flex: 1 }}>
-                                        <Text style={s.orderItemName}>{item.dish_name}</Text>
-                                        <Text style={s.orderItemMeta}>${item.price?.toFixed(2)} × {item.quantity}</Text>
+                                        <Text style={st.orderItemName}>{item.dish_name}</Text>
+                                        <Text style={st.orderItemMeta}>{'$' + Number(item.price).toFixed(2) + ' × ' + item.quantity}</Text>
                                     </View>
-                                    <View style={s.qtyRow}>
-                                        <TouchableOpacity style={s.qtyBtn} onPress={() => {
-                                            if (item.quantity > 1) setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity - 1 } : o));
-                                            else setOrderItems(orderItems.filter(o => o.id !== item.id));
-                                        }}>
-                                            <Octicons name="dash" size={14} color={GREEN} />
+                                    <View style={st.qtyRow}>
+                                        <TouchableOpacity style={st.qtyBtn} onPress={() => handleQtyDec(item)} activeOpacity={0.7}>
+                                            <Text style={st.qtyBtnTxt}>−</Text>
                                         </TouchableOpacity>
-                                        <Text style={s.qtyText}>{item.quantity}</Text>
-                                        <TouchableOpacity style={s.qtyBtn} onPress={() => setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o))}>
-                                            <Octicons name="plus" size={14} color={GREEN} />
+                                        <Text style={st.qtyTxt}>{item.quantity}</Text>
+                                        <TouchableOpacity style={st.qtyBtn} onPress={() => handleQtyInc(item)} activeOpacity={0.7}>
+                                            <Text style={st.qtyBtnTxt}>+</Text>
                                         </TouchableOpacity>
                                     </View>
-                                    <Text style={s.orderItemTotal}>${(item.price * item.quantity).toFixed(2)}</Text>
+                                    <Text style={st.orderItemTotal}>{'$' + (item.price * item.quantity).toFixed(2)}</Text>
                                 </View>
                             ))}
-                            <View style={s.orderTotalRow}>
-                                <Text style={s.orderTotalLabel}>Total:</Text>
-                                <Text style={s.orderTotalAmount}>${orderTotal.toFixed(2)}</Text>
+                            <View style={st.orderTotalRow}>
+                                <Text style={st.orderTotalLabel}>Total:</Text>
+                                <Text style={st.orderTotalAmt}>{'$' + orderTotal.toFixed(2)}</Text>
                             </View>
-                            <TouchableOpacity style={s.placeOrderBtn} onPress={() => setShowOrderModal(true)} activeOpacity={0.85}>
-                                <Text style={s.placeOrderBtnText}>Place Booking</Text>
+                            <TouchableOpacity style={st.placeOrderBtn} onPress={() => setShowOrderModal(true)} activeOpacity={0.85}>
+                                <Text style={st.placeOrderBtnTxt}>Place Booking</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
-                )}
+                ) : null}
 
-                <TouchableOpacity style={[s.returnBtn, { marginTop: 8 }]} onPress={() => router.back()} activeOpacity={0.85}>
-                    <Text style={s.returnBtnText}>← Return</Text>
+                <TouchableOpacity style={[st.returnBtn, { marginTop: 8 }]} onPress={() => router.back()} activeOpacity={0.85}>
+                    <Text style={st.returnBtnTxt}>← Return</Text>
                 </TouchableOpacity>
 
-                {/* Order Modal */}
-                <Modal visible={showOrderModal} transparent animationType="fade" onRequestClose={() => setShowOrderModal(false)}>
-                    <View style={s.modalOverlay}>
-                        <View style={s.modalCard}>
-                            <Text style={s.modalTitle}>Select Booking Date & Time</Text>
+                {/* ── Booking modal ── */}
+                <Modal visible={showOrderModal} transparent animationType="slide" onRequestClose={() => setShowOrderModal(false)}>
+                    <View style={st.modalOverlay}>
+                        <View style={st.modalCard}>
+                            <View style={st.modalHeader}>
+                                <Text style={st.modalTitle}>Place Booking</Text>
+                                <TouchableOpacity onPress={() => setShowOrderModal(false)} style={st.modalCloseBtn}>
+                                    <Octicons name="x" size={18} color={GREEN} />
+                                </TouchableOpacity>
+                            </View>
 
-                            {/* Summary */}
-                            <View style={s.modalSection}>
-                                <Text style={s.modalSectionLabel}>Booking Summary</Text>
-                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                                    <Text style={s.modalText}>Items: {orderItems.length}</Text>
-                                    <Text style={[s.modalText, { fontWeight: '700', color: GREEN }]}>
-                                        ${quoteFinal.toFixed(2)}
-                                    </Text>
+                            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+
+                                {/* Summary */}
+                                <View style={st.modalSection}>
+                                    <Text style={st.modalSectionLabel}>Booking Summary</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                                        <Text style={st.modalTxt}>{'Items: ' + orderItems.length}</Text>
+                                        <Text style={[st.modalTxt, { fontWeight: '700', color: GREEN }]}>{'$' + quoteFinal.toFixed(2)}</Text>
+                                    </View>
+                                    {quoteMult > 1.0 ? (
+                                        <View style={st.surgeBadge}>
+                                            <Text style={st.surgeBadgeTxt}>{'⚡ High Demand: +$' + rushFee.toFixed(2) + ' rush fee'}</Text>
+                                        </View>
+                                    ) : null}
+                                    {pricingLoading ? <Text style={[st.modalTxt, { marginTop: 6, color: TEXT_SOFT }]}>Refreshing price...</Text> : null}
                                 </View>
-                                {quoteMultiplier > 1.0 ? (
-                                    <View style={s.surgeBadge}>
-                                        <Text style={s.surgeBadgeText}>
-                                            High Demand: ${rushFee.toFixed(2)} rush fee applied
-                                        </Text>
+
+                                {/* Date/time display */}
+                                <View style={[st.modalSection, { backgroundColor: GREEN_LIGHT, borderColor: GREEN }]}>
+                                    <Text style={st.modalSectionLabel}>Selected Date & Time</Text>
+                                    <Text style={{ fontSize: 16, fontWeight: '700', color: GREEN, marginTop: 4 }}>{formattedDT}</Text>
+                                    <Text style={{ fontSize: 12, color: TEXT_MID, marginTop: 4 }}>{'Meal time: ' + currentMealType}</Text>
+                                </View>
+
+                                {/* Conflict banner */}
+                                {mealConflicts.length > 0 ? (
+                                    <View style={st.conflictBanner}>
+                                        <Octicons name="alert" size={15} color="#92400e" />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={st.conflictTitle}>Meal Time Mismatch</Text>
+                                            {mealConflicts.map((c, i) => (
+                                                <Text key={i} style={st.conflictItem}>{'• ' + c.item.dish_name + ' → ' + c.mealType + ' only (' + c.allowedLabel + ')'}</Text>
+                                            ))}
+                                            <Text style={st.conflictHint}>Adjust the hour or remove the conflicting item.</Text>
+                                        </View>
                                     </View>
                                 ) : null}
-                                {pricingLoading ? <Text style={[s.modalText, { marginTop: 6 }]}>Refreshing live quote...</Text> : null}
-                            </View>
 
-                            {/* Date */}
-                            <View style={s.modalSection}>
-                                <Text style={s.modalSectionLabel}>Booking Date</Text>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={s.pickerLabel}>Month</Text>
-                                        <Picker selectedValue={selectedMonth} onValueChange={setSelectedMonth} style={s.picker}>
-                                            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => <Picker.Item key={i} label={m} value={i} />)}
-                                        </Picker>
-                                    </View>
-                                    <View style={{ flex: 0.6 }}>
-                                        <Text style={s.pickerLabel}>Day</Text>
-                                        <Picker selectedValue={selectedDay} onValueChange={setSelectedDay} style={s.picker}>
-                                            {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <Picker.Item key={d} label={String(d)} value={d} />)}
-                                        </Picker>
-                                    </View>
-                                    <View style={{ flex: 0.8 }}>
-                                        <Text style={s.pickerLabel}>Year</Text>
-                                        <Picker selectedValue={selectedYear} onValueChange={setSelectedYear} style={s.picker}>
-                                            <Picker.Item label="2025" value={2025} />
-                                            <Picker.Item label="2026" value={2026} />
-                                        </Picker>
+                                {/* Date steppers */}
+                                <View style={st.modalSection}>
+                                    <Text style={st.modalSectionLabel}>Booking Date</Text>
+                                    <View style={st.stepperGroup}>
+                                        <Stepper label="Month"  value={MONTHS_SHORT[selectedMonth]}          onDecrement={handleMonthDec} onIncrement={handleMonthInc} />
+                                        <View style={st.stepperDivider} />
+                                        <Stepper label="Day"    value={String(selectedDay).padStart(2,'0')}   onDecrement={handleDayDec}   onIncrement={handleDayInc}   />
+                                        <View style={st.stepperDivider} />
+                                        <Stepper label="Year"   value={String(selectedYear)}                  onDecrement={handleYearDec}  onIncrement={handleYearInc}  />
                                     </View>
                                 </View>
-                            </View>
 
-                            {/* Time */}
-                            <View style={s.modalSection}>
-                                <Text style={s.modalSectionLabel}>Time</Text>
-                                <View style={{ flexDirection: 'row', gap: 8 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={s.pickerLabel}>Hour</Text>
-                                        <Picker selectedValue={selectedHour} onValueChange={setSelectedHour} style={s.picker}>
-                                            {Array.from({ length: 24 }, (_, i) => i).map(h => <Picker.Item key={h} label={String(h).padStart(2, '0')} value={h} />)}
-                                        </Picker>
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={s.pickerLabel}>Minute</Text>
-                                        <Picker selectedValue={selectedMinute} onValueChange={setSelectedMinute} style={s.picker}>
-                                            {[0, 15, 30, 45].map(m => <Picker.Item key={m} label={String(m).padStart(2, '0')} value={m} />)}
-                                        </Picker>
+                                {/* Time steppers */}
+                                <View style={st.modalSection}>
+                                    <Text style={st.modalSectionLabel}>Time</Text>
+                                    <View style={st.stepperGroup}>
+                                        <Stepper label="Hour"   value={String(selectedHour).padStart(2,'0')}   onDecrement={handleHourDec}  onIncrement={handleHourInc}  />
+                                        <View style={st.stepperDivider} />
+                                        <Stepper label="Minute" value={String(selectedMinute).padStart(2,'00')} onDecrement={handleMinDec}   onIncrement={handleMinInc}   />
                                     </View>
                                 </View>
-                            </View>
 
-                            {/* Event location */}
-                            <View style={s.modalSection}>
-                                <Text style={s.modalSectionLabel}>Event Location ZIP</Text>
-                                <TextInput
-                                    value={eventZip}
-                                    onChangeText={setEventZip}
-                                    placeholder="e.g. 10001"
-                                    keyboardType="number-pad"
-                                    maxLength={5}
-                                    style={s.zipInput}
-                                />
-                            </View>
+                                {/* ZIP */}
+                                <View style={st.modalSection}>
+                                    <Text style={st.modalSectionLabel}>Event Location ZIP</Text>
+                                    <TextInput value={eventZip} onChangeText={setEventZip} placeholder="e.g. 10001" keyboardType="number-pad" maxLength={5} style={st.zipInput} placeholderTextColor={TEXT_SOFT} />
+                                </View>
 
-                            {/* Payment */}
-                            <View style={s.modalSection}>
-                                <Text style={s.modalSectionLabel}>Payment Method</Text>
-                                {loadingPaymentMethods ? <LoadingIcon icon="spinner" size={40} message="" /> :
-                                paymentMethods.length === 0 ? (
-                                    <View>
-                                        <Text style={[s.modalText, { textAlign: 'center', marginBottom: 8 }]}>No payment methods available</Text>
-                                        <TouchableOpacity style={s.returnBtn} onPress={() => { setShowOrderModal(false); router.push('/(tabs)/Profile'); }}>
-                                            <Text style={s.returnBtnText}>Add Card in Profile</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                ) : (
-                                    paymentMethods.map(method => (
-                                        <TouchableOpacity key={method.id} onPress={() => setSelectedPaymentMethod(method.id)}
-                                            style={[s.paymentRow, selectedPaymentMethod === method.id && s.paymentRowSelected]}>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={s.paymentCardNum}>{method.brand.toUpperCase()} •••• {method.last4}</Text>
-                                                <Text style={s.paymentCardMeta}>Expires {method.exp_month}/{method.exp_year}</Text>
-                                            </View>
-                                            <View style={[s.radio, selectedPaymentMethod === method.id && s.radioSelected]}>
-                                                {selectedPaymentMethod === method.id && <View style={s.radioDot} />}
-                                            </View>
-                                        </TouchableOpacity>
-                                    ))
-                                )}
-                            </View>
+                                {/* Payment */}
+                                <View style={st.modalSection}>
+                                    <Text style={st.modalSectionLabel}>Payment Method</Text>
+                                    {loadingPaymentMethods ? (
+                                        <LoadingIcon icon="spinner" size={40} message="" />
+                                    ) : paymentMethods.length === 0 ? (
+                                        <View>
+                                            <Text style={[st.modalTxt, { textAlign: 'center', marginBottom: 8 }]}>No payment methods saved</Text>
+                                            <TouchableOpacity style={st.returnBtn} onPress={() => { setShowOrderModal(false); router.push('/(tabs)/Profile'); }}>
+                                                <Text style={st.returnBtnTxt}>Add Card in Profile</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    ) : (
+                                        paymentMethods.map(method => (
+                                            <TouchableOpacity key={method.id} onPress={() => setSelectedPaymentMethod(method.id)} style={[st.paymentRow, selectedPaymentMethod === method.id && st.paymentRowSelected]}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={st.paymentCardNum}>{method.brand.toUpperCase() + ' •••• ' + method.last4}</Text>
+                                                    <Text style={st.paymentCardMeta}>{'Expires ' + method.exp_month + '/' + method.exp_year}</Text>
+                                                </View>
+                                                <View style={[st.radio, selectedPaymentMethod === method.id && st.radioSelected]}>
+                                                    {selectedPaymentMethod === method.id ? <View style={st.radioDot} /> : null}
+                                                </View>
+                                            </TouchableOpacity>
+                                        ))
+                                    )}
+                                </View>
 
-                            {/* Actions */}
-                            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
-                                <TouchableOpacity style={[s.returnBtn, { flex: 1 }]} onPress={() => setShowOrderModal(false)} disabled={paymentProcessing}>
-                                    <Text style={s.returnBtnText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[s.placeOrderBtn, { flex: 1 }, (paymentProcessing || !paymentMethods.length) && { backgroundColor: '#c8ddd0' }]}
-                                    onPress={handlePlaceOrder} disabled={paymentProcessing || !paymentMethods.length} activeOpacity={0.85}>
-                                    <Text style={s.placeOrderBtnText}>{paymentProcessing ? 'Processing...' : 'Confirm & Pay'}</Text>
-                                </TouchableOpacity>
-                            </View>
+                                {/* Actions */}
+                                <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+                                    <TouchableOpacity style={[st.returnBtn, { flex: 1 }]} onPress={() => setShowOrderModal(false)} disabled={paymentProcessing}>
+                                        <Text style={st.returnBtnTxt}>Cancel</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[st.placeOrderBtn, { flex: 1, marginTop: 0 }, (paymentProcessing || !paymentMethods.length || mealConflicts.length > 0) && { backgroundColor: '#c8ddd0' }]}
+                                        onPress={handlePlaceOrder}
+                                        disabled={paymentProcessing || !paymentMethods.length || mealConflicts.length > 0}
+                                        activeOpacity={0.85}
+                                    >
+                                        <Text style={st.placeOrderBtnTxt}>{paymentProcessing ? 'Processing...' : 'Confirm & Pay'}</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                            </ScrollView>
                         </View>
                     </View>
                 </Modal>
@@ -554,144 +687,94 @@ export default function ChefMenu() {
     );
 }
 
-const s = StyleSheet.create({
-    screen: { flex: 1, backgroundColor: BG },
-    chefHeader: {
-        backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
-        marginBottom: 16, overflow: 'hidden',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
-    },
-    chefHeaderTop: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        padding: 16, paddingBottom: 12,
-    },
-    chefName: { fontSize: 22, fontWeight: '800', color: TEXT, letterSpacing: -0.5 },
-    chefAvail: { fontSize: 13, color: TEXT_SOFT, marginTop: 3 },
-    chefHeaderBottom: {
-        padding: 14, paddingTop: 0,
-        borderTopWidth: 1, borderTopColor: BORDER,
-        paddingTop: 12,
-    },
-    cuisineRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-    cuisineTag: { backgroundColor: GREEN_LIGHT, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-    cuisineTagText: { fontSize: 12, fontWeight: '600', color: GREEN },
-    lastUpdated: { fontSize: 12, color: TEXT_SOFT, marginTop: 8 },
-    sectionCard: {
-        backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
-        marginBottom: 14, overflow: 'hidden',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
-    },
-    sectionHeader: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: 16, paddingVertical: 14,
-        borderBottomWidth: 1, borderBottomColor: BORDER,
-    },
-    sectionTitle: { fontSize: 16, fontWeight: '700', color: TEXT },
-    sectionBody: { padding: 12 },
-    menuCard: {
-        backgroundColor: '#f8faf8', borderRadius: 12, borderWidth: 1, borderColor: BORDER,
-        marginBottom: 10, padding: 12,
-    },
-    menuItemName: {
-        fontSize: 15, fontWeight: '700', color: TEXT, textAlign: 'center',
-        paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: BORDER, marginBottom: 10,
-    },
-    menuItemBody: { flexDirection: 'row', marginBottom: 8 },
-    menuItemDesc: { fontSize: 13, color: TEXT_MID, lineHeight: 18, marginBottom: 4 },
-    menuItemMeta: { fontSize: 12, color: TEXT_SOFT, marginBottom: 2 },
-    menuItemImage: { width: 130, height: 120, borderRadius: 10 },
-    menuItemImageEmpty: { backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' },
-    menuItemImageEmptyText: { fontSize: 12, color: GREEN, fontWeight: '600' },
-    menuItemFooter: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingTop: 8, borderTopWidth: 1, borderTopColor: BORDER, marginBottom: 10,
-    },
-    menuItemFooterMeta: { fontSize: 12, color: TEXT_SOFT },
-    menuItemPrice: { fontSize: 18, fontWeight: '800', color: GREEN },
-    addBtn: {
-        backgroundColor: GREEN, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
-    },
-    addBtnDisabled: { backgroundColor: '#e2ece2' },
-    addBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-    addBtnTextDisabled: { color: TEXT_SOFT },
-    orderRow: {
-        flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
-        borderBottomWidth: 1, borderBottomColor: BORDER,
-    },
-    orderItemName: { fontSize: 14, fontWeight: '600', color: TEXT },
-    orderItemMeta: { fontSize: 12, color: TEXT_SOFT, marginTop: 2 },
-    qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12 },
-    qtyBtn: {
-        width: 30, height: 30, borderRadius: 15, backgroundColor: GREEN_LIGHT,
-        alignItems: 'center', justifyContent: 'center',
-    },
-    qtyText: { fontSize: 16, fontWeight: '700', color: TEXT, minWidth: 20, textAlign: 'center' },
-    orderItemTotal: { fontSize: 14, fontWeight: '700', color: GREEN, minWidth: 52, textAlign: 'right' },
-    orderTotalRow: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingTop: 12, marginTop: 4,
-    },
-    orderTotalLabel: { fontSize: 16, fontWeight: '700', color: TEXT },
-    orderTotalAmount: { fontSize: 20, fontWeight: '800', color: GREEN },
-    placeOrderBtn: {
-        backgroundColor: GREEN, paddingVertical: 14, borderRadius: 12,
-        alignItems: 'center', marginTop: 12,
-        shadowColor: GREEN, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3,
-    },
-    placeOrderBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-    returnBtn: {
-        paddingVertical: 13, borderRadius: 12, alignItems: 'center',
-        borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff',
-    },
-    returnBtnText: { color: TEXT_MID, fontWeight: '600', fontSize: 14 },
-    modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalCard: {
-        backgroundColor: '#fff', borderRadius: 20, padding: 20,
-        width: '92%', maxWidth: 420,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 10,
-    },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: TEXT, textAlign: 'center', marginBottom: 16 },
-    modalSection: {
-        backgroundColor: '#f8faf8', borderRadius: 12, borderWidth: 1, borderColor: BORDER,
-        padding: 12, marginBottom: 10,
-    },
-    modalSectionLabel: { fontSize: 13, fontWeight: '700', color: TEXT_MID, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
-    modalText: { fontSize: 14, color: TEXT_MID },
-    surgeBadge: {
-        marginTop: 8,
-        backgroundColor: '#fde68a',
-        borderColor: '#f59e0b',
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-    },
-    surgeBadgeText: { fontSize: 12, fontWeight: '700', color: '#92400e' },
-    pickerLabel: { fontSize: 11, color: TEXT_SOFT, marginBottom: 2 },
-    picker: { backgroundColor: '#fff', borderRadius: 8 },
-    zipInput: {
-        borderWidth: 1,
-        borderColor: BORDER,
-        backgroundColor: '#fff',
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        color: TEXT,
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    paymentRow: {
-        flexDirection: 'row', alignItems: 'center', padding: 10,
-        borderRadius: 10, borderWidth: 1, borderColor: BORDER,
-        backgroundColor: '#fff', marginTop: 6,
-    },
-    paymentRowSelected: { borderColor: GREEN, backgroundColor: '#f0f7f0' },
-    paymentCardNum: { fontSize: 14, fontWeight: '600', color: TEXT },
-    paymentCardMeta: { fontSize: 12, color: TEXT_SOFT, marginTop: 2 },
-    radio: {
-        width: 20, height: 20, borderRadius: 10, borderWidth: 2,
-        borderColor: BORDER, alignItems: 'center', justifyContent: 'center',
-    },
-    radioSelected: { borderColor: GREEN },
-    radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN },
+const st = StyleSheet.create({
+    screen:           { flex: 1, backgroundColor: BG },
+    chefHeader:       { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER, marginBottom: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+    chefHeaderTop:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 12 },
+    chefName:         { fontSize: 22, fontWeight: '800', color: TEXT, letterSpacing: -0.5 },
+    chefAvail:        { fontSize: 13, color: TEXT_SOFT, marginTop: 3 },
+    chefHeaderBottom: { padding: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: BORDER },
+    cuisineRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+    cuisineTag:       { backgroundColor: GREEN_LIGHT, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    cuisineTagTxt:    { fontSize: 12, fontWeight: '600', color: GREEN },
+    lastUpdated:      { fontSize: 12, color: TEXT_SOFT, marginTop: 8 },
+
+    // Section cards
+    sectionCard:      { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER, marginBottom: 14, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+    sectionHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: BORDER },
+    sectionTitle:     { fontSize: 16, fontWeight: '800' },
+    sectionSub:       { fontSize: 12, fontWeight: '500', marginTop: 2, opacity: 0.85 },
+    sectionCount:     { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+    sectionCountTxt:  { fontSize: 12, fontWeight: '700' },
+    sectionBody:      { padding: 12 },
+
+    // Menu item card
+    menuCard:         { backgroundColor: '#f8faf8', borderRadius: 12, borderWidth: 1, borderColor: BORDER, marginBottom: 10, padding: 12 },
+    menuItemName:     { fontSize: 15, fontWeight: '700', color: TEXT, textAlign: 'center', paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: BORDER, marginBottom: 8 },
+    mealBadge:        { alignSelf: 'center', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20, marginBottom: 8 },
+    mealBadgeTxt:     { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+    menuItemBody:     { flexDirection: 'row', marginBottom: 8 },
+    menuItemDesc:     { fontSize: 13, color: TEXT_MID, lineHeight: 18, marginBottom: 4 },
+    menuItemMeta:     { fontSize: 12, color: TEXT_SOFT, marginBottom: 2 },
+    menuItemImage:    { width: 120, height: 110, borderRadius: 10 },
+    menuItemImageEmpty:   { backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' },
+    menuItemImageEmptyTxt:{ fontSize: 12, color: GREEN, fontWeight: '600' },
+    menuItemFooter:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderTopColor: BORDER, marginBottom: 10 },
+    menuItemFooterMeta:{ fontSize: 12, color: TEXT_SOFT },
+    menuItemPrice:    { fontSize: 18, fontWeight: '800', color: GREEN },
+    addBtn:           { backgroundColor: GREEN, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+    addBtnDisabled:   { backgroundColor: '#e2ece2' },
+    addBtnTxt:        { color: '#fff', fontWeight: '700', fontSize: 14 },
+    addBtnTxtDisabled:{ color: TEXT_SOFT },
+
+    emptyCard:        { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 32, alignItems: 'center' },
+    emptyTxt:         { fontSize: 14, color: TEXT_SOFT },
+
+    // Order summary
+    orderRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: BORDER },
+    orderItemName:    { fontSize: 14, fontWeight: '600', color: TEXT },
+    orderItemMeta:    { fontSize: 12, color: TEXT_SOFT, marginTop: 2 },
+    qtyRow:           { flexDirection: 'row', alignItems: 'center', gap: 6, marginHorizontal: 10 },
+    qtyBtn:           { width: 34, height: 34, borderRadius: 17, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
+    qtyBtnTxt:        { fontSize: 20, fontWeight: '700', color: GREEN, lineHeight: 24 },
+    qtyTxt:           { fontSize: 16, fontWeight: '700', color: TEXT, minWidth: 22, textAlign: 'center' },
+    orderItemTotal:   { fontSize: 14, fontWeight: '700', color: GREEN, minWidth: 52, textAlign: 'right' },
+    orderTotalRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, marginTop: 4 },
+    orderTotalLabel:  { fontSize: 16, fontWeight: '700', color: TEXT },
+    orderTotalAmt:    { fontSize: 20, fontWeight: '800', color: GREEN },
+    placeOrderBtn:    { backgroundColor: GREEN, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 12, shadowColor: GREEN, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 3 },
+    placeOrderBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
+    returnBtn:        { paddingVertical: 13, borderRadius: 12, alignItems: 'center', borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff' },
+    returnBtnTxt:     { color: TEXT_MID, fontWeight: '600', fontSize: 14 },
+
+    // Modal
+    modalOverlay:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalCard:        { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '92%' },
+    modalHeader:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: BORDER },
+    modalTitle:       { fontSize: 18, fontWeight: '800', color: TEXT },
+    modalCloseBtn:    { width: 34, height: 34, borderRadius: 17, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' },
+    modalSection:     { backgroundColor: '#f8faf8', borderRadius: 12, borderWidth: 1, borderColor: BORDER, padding: 14, marginBottom: 10 },
+    modalSectionLabel:{ fontSize: 11, fontWeight: '700', color: TEXT_MID, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 },
+    modalTxt:         { fontSize: 14, color: TEXT_MID },
+    surgeBadge:       { marginTop: 8, backgroundColor: '#fde68a', borderColor: '#f59e0b', borderWidth: 1, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10 },
+    surgeBadgeTxt:    { fontSize: 12, fontWeight: '700', color: '#92400e' },
+    conflictBanner:   { flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: '#fef9c3', borderRadius: 12, borderWidth: 1, borderColor: '#fde68a', padding: 12, marginBottom: 10 },
+    conflictTitle:    { fontSize: 13, fontWeight: '700', color: '#92400e', marginBottom: 4 },
+    conflictItem:     { fontSize: 12, color: '#78350f', marginBottom: 2 },
+    conflictHint:     { fontSize: 11, color: '#92400e', marginTop: 4, fontStyle: 'italic' },
+    stepperGroup:     { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+    stepperDivider:   { width: 1, height: 40, backgroundColor: BORDER, marginHorizontal: 4 },
+    stepperLabel:     { fontSize: 11, color: TEXT_SOFT, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: '600' },
+    stepperRow:       { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    stepperBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
+    stepperBtnTxt:    { fontSize: 20, fontWeight: '700', color: GREEN, lineHeight: 24 },
+    stepperVal:       { fontSize: 16, fontWeight: '700', color: TEXT, minWidth: 40, textAlign: 'center' },
+    zipInput:         { borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: TEXT, fontSize: 15, fontWeight: '600', marginTop: 6 },
+    paymentRow:       { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: BORDER, backgroundColor: '#fff', marginTop: 8 },
+    paymentRowSelected:{ borderColor: GREEN, backgroundColor: '#f0f7f0' },
+    paymentCardNum:   { fontSize: 14, fontWeight: '600', color: TEXT },
+    paymentCardMeta:  { fontSize: 12, color: TEXT_SOFT, marginTop: 2 },
+    radio:            { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: BORDER, alignItems: 'center', justifyContent: 'center' },
+    radioSelected:    { borderColor: GREEN },
+    radioDot:         { width: 11, height: 11, borderRadius: 6, backgroundColor: GREEN },
 });
