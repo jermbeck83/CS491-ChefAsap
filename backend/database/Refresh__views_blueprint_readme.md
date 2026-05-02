@@ -22,3 +22,7 @@ Start Command: python database/refresh_views.py
 
 
 Schedule: 0 * * * * (This cron syntax runs it at the top of every hour. If you only need daily updates, use 0 0 * * * for midnight).
+
+IF NOT
+
+locally run in venv environment in backend folder: 'python -m database.refresh_views'
