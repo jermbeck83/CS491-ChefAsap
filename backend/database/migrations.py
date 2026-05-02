@@ -641,6 +641,61 @@ def create_ml_dataset_export_log():
             conn.close()
 
 
+def allow_any_meal_type_in_bookings():
+    migration_name = "allow_any_meal_type_in_bookings"
+    description = (
+        "Extends bookings_meal_type_check to include 'any', allowing specialty / "
+        "off-hour orders whose meal_type does not fit breakfast/lunch/dinner."
+    )
+    rollback_script = """
+        ALTER TABLE bookings
+            DROP CONSTRAINT IF EXISTS bookings_meal_type_check;
+        ALTER TABLE bookings
+            ADD CONSTRAINT bookings_meal_type_check
+            CHECK (meal_type IN ('breakfast', 'lunch', 'dinner'));
+    """
+
+    if has_migration_run(migration_name):
+        return
+
+    print(f"{'='*70}")
+    print(f"\nRunning migration: {migration_name}")
+    print(f"{'='*70}")
+
+    conn = None
+    cursor = None
+    try:
+        conn = psycopg2.connect(**db_config)
+        cursor = conn.cursor()
+
+        print("Updating bookings_meal_type_check to allow 'any'...")
+        cursor.execute('''
+            ALTER TABLE bookings
+            DROP CONSTRAINT IF EXISTS bookings_meal_type_check;
+        ''')
+        cursor.execute('''
+            ALTER TABLE bookings
+            ADD CONSTRAINT bookings_meal_type_check
+            CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'any'));
+        ''')
+
+        conn.commit()
+        record_migration(migration_name, description, rollback_script)
+        print("bookings_meal_type_check updated successfully.")
+
+    except Exception as e:
+        print(f"Error updating bookings_meal_type_check: {e}")
+        if conn:
+            conn.rollback()
+            print("Changes rolled back")
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 def run_db_updates():
     print("="*70)
     print("Running database updates:")
@@ -657,6 +712,7 @@ def run_db_updates():
         create_mv_demand_forecast_features,
         create_mv_chef_inference_features,
         create_ml_dataset_export_log,
+        allow_any_meal_type_in_bookings,
         #add more migration functions here
     ]
 
