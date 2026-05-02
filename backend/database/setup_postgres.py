@@ -380,7 +380,7 @@ def init_postgres_db():
                 customer_id INTEGER NOT NULL,
                 chef_id INTEGER,
                 cuisine_type VARCHAR(50) NOT NULL,
-                meal_type VARCHAR(20) NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'dinner')),
+                meal_type VARCHAR(20) NOT NULL CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'any')),
                 event_type VARCHAR(20) DEFAULT 'dinner' CHECK (event_type IN ('birthday', 'wedding', 'party', 'dinner', 'brunch')),
                 booking_date DATE NOT NULL,
                 booking_time TIME NOT NULL,
