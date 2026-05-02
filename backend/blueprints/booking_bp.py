@@ -1,3 +1,5 @@
+import json
+
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
 from database.config import db_config
@@ -50,6 +52,8 @@ def create_booking():
         base_price = data.get('base_price')
         dynamic_price = data.get('dynamic_price')
         total_cost = data.get('total_cost')
+        pricing_multiplier = data.get('pricing_multiplier')
+        pricing_features = data.get('pricing_features')
         
         if not all([customer_id, cuisine_type, meal_type, 
                    booking_date, booking_time, number_of_people]):
@@ -68,15 +72,15 @@ def create_booking():
                 customer_id, cuisine_type, meal_type, event_type, 
                 booking_date, booking_time, produce_supply, 
                 number_of_people, special_notes, 
-                base_price, dynamic_price, total_cost
+                base_price, dynamic_price, total_cost, pricing_multiplier, pricing_features
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
             RETURNING id
         ''', (
             customer_id, cuisine_type, meal_type, event_type, 
             booking_date, booking_time, produce_supply, 
             number_of_people, special_notes,
-            base_price, dynamic_price, total_cost
+            base_price, dynamic_price, total_cost, pricing_multiplier, json.dumps(pricing_features) if pricing_features else None # Convert pricing_features to JSON string if it's a dict or list
         ))
         
         booking_id = cursor.fetchone()[0]
