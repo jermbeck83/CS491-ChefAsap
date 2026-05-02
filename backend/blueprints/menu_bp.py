@@ -59,7 +59,7 @@ def get_chef_menu(chef_id):
                 SELECT id, chef_id, dish_name, description, photo_url,
                        servings, cuisine_type, dietary_info,
                        spice_level, is_available, is_featured, display_order, created_at,
-                       price, prep_time, category_id
+                       price, prep_time, category_id, meal_type, category_name
                 FROM chef_menu_items
                 WHERE chef_id = %s
                 ORDER BY display_order, dish_name
@@ -69,7 +69,7 @@ def get_chef_menu(chef_id):
                 SELECT id, chef_id, dish_name, description, photo_url,
                        servings, cuisine_type, dietary_info,
                        spice_level, is_available, is_featured, display_order, created_at,
-                       price, prep_time, category_id
+                       price, prep_time, category_id, meal_type, category_name
                 FROM chef_menu_items
                 WHERE chef_id = %s AND is_available = TRUE
                 ORDER BY display_order, dish_name
@@ -95,7 +95,9 @@ def get_chef_menu(chef_id):
                 'created_at': row[12].isoformat() if row[12] else None,
                 'price': float(row[13]) if row[13] is not None else None,
                 'prep_time': row[14],
-                'category_id': row[15] if len(row) > 15 else None
+                'category_id': row[15],
+                'meal_type': row[16],
+                'category_name': row[17],
             })
 
         cursor.close()
@@ -123,7 +125,7 @@ def get_menu_item(item_id):
             SELECT id, chef_id, dish_name, description, photo_url,
                    servings, cuisine_type, dietary_info,
                    spice_level, is_available, display_order, created_at, updated_at,
-                   price, prep_time
+                   price, prep_time, meal_type, category_name
             FROM chef_menu_items
             WHERE id = %s
         """, (item_id,))
@@ -148,7 +150,9 @@ def get_menu_item(item_id):
             'created_at': row[11].isoformat() if row[11] else None,
             'updated_at': row[12].isoformat() if row[12] else None,
             'price': float(row[13]) if row[13] else None,
-            'prep_time': row[14]
+            'prep_time': row[14],
+            'meal_type': row[15],
+            'category_name': row[16],
         }
 
         cursor.close()
@@ -187,8 +191,8 @@ def add_menu_item(chef_id):
             INSERT INTO chef_menu_items
             (chef_id, dish_name, description, photo_url,
              servings, cuisine_type, dietary_info, spice_level, display_order,
-             price, prep_time, category_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             price, prep_time, category_id, meal_type, category_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             chef_id,
@@ -202,7 +206,9 @@ def add_menu_item(chef_id):
             data.get('display_order', 0),
             data.get('price'),
             data.get('prep_time'),
-            data.get('category_id')
+            data.get('category_id'),
+            data.get('meal_type'),
+            data.get('category_name'),
         ))
 
         new_id = cursor.fetchone()[0]
@@ -244,7 +250,9 @@ def update_menu_item(item_id):
             'dish_name', 'description', 'photo_url', 'servings',
             'cuisine_type', 'dietary_info', 'spice_level',
             'is_available', 'is_featured', 'display_order',
-            'price', 'prep_time', 'category_id'
+            'price', 'prep_time', 'category_id',
+            'meal_type',
+            'category_name',
         ]
 
         for field in allowed_fields:
@@ -317,7 +325,7 @@ def get_featured_dishes(chef_id):
             SELECT id, chef_id, dish_name, description, photo_url,
                    servings, cuisine_type, dietary_info,
                    spice_level, is_available, is_featured, display_order,
-                   price, prep_time
+                   price, prep_time, meal_type, category_name
             FROM chef_menu_items
             WHERE chef_id = %s AND is_featured = TRUE AND is_available = TRUE
             ORDER BY display_order, dish_name
@@ -331,7 +339,7 @@ def get_featured_dishes(chef_id):
                 SELECT id, chef_id, dish_name, description, photo_url,
                        servings, cuisine_type, dietary_info,
                        spice_level, is_available, is_featured, display_order,
-                       price, prep_time
+                       price, prep_time, meal_type, category_name
                 FROM chef_menu_items
                 WHERE chef_id = %s AND is_available = TRUE
                 ORDER BY display_order, created_at, dish_name
@@ -355,7 +363,9 @@ def get_featured_dishes(chef_id):
                 'is_featured': row[10],
                 'display_order': row[11],
                 'price': float(row[12]) if row[12] else None,
-                'prep_time': row[13]
+                'prep_time': row[13],
+                'meal_type': row[14],
+                'category_name': row[15],
             })
 
         cursor.close()
@@ -677,7 +687,6 @@ def upload_item_photo(item_id):
         if error:
             return jsonify({'error': error}), 400
 
-        # Update photo_url in database
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
