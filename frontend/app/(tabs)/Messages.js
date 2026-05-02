@@ -15,15 +15,22 @@ import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import getEnvVars from "../../config";
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../providers/ThemeProvider';
 import Octicons from '@expo/vector-icons/Octicons';
 import LoadingIcon from '../components/LoadingIcon';
-import { getTailwindColor } from '../utils/getTailwindColor';
 
 const FILTER_TABS = ['All', 'Unread', 'Chefs', 'Bookings'];
 
-const AVATAR_PALETTE_LIGHT = ['#D1FAE5', '#E9D5FF', '#FEF3C7', '#BFDBFE', '#FECDD3', '#FDE68A'];
-const AVATAR_PALETTE_DARK = ['#14532D', '#4C1D95', '#713F12', '#1E3A5F', '#831843', '#713F12'];
+/** Always cream on this tab — matches tab bar & Search (ignore app dark theme) */
+const CREAM_BG = '#fefce8';
+const CARD_BG = '#ffffff';
+const TEXT_PRIMARY = '#1a2e1a';
+const TEXT_SECONDARY = '#44403c';
+const TEXT_MUTED = '#78716c';
+const BORDER = '#e2ece2';
+const GREEN = '#2d6a4f';
+const GREEN_MUTED = '#4a7c59';
+
+const AVATAR_PALETTE = ['#D1FAE5', '#E9D5FF', '#FEF3C7', '#BFDBFE', '#FECDD3', '#FDE68A'];
 
 function hashString(s) {
     let h = 0;
@@ -50,16 +57,14 @@ export default function Messages() {
     const searchRef = useRef(null);
     const { apiUrl } = getEnvVars();
     const { userType, token, profileId } = useAuth();
-    const { manualTheme } = useTheme();
     const router = useRouter();
     const insets = useSafeAreaInsets();
 
-    const isLight = manualTheme === 'light';
-    const pageBg = isLight ? getTailwindColor('base.100') : getTailwindColor('base.dark.100');
-    const cardBg = isLight ? '#ffffff' : getTailwindColor('base.dark.200');
-    const mutedText = isLight ? '#78716c' : getTailwindColor('base.dark.300');
-    const borderSubtle = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
-    const iconMuted = isLight ? '#57534e' : '#a8a29e';
+    const pageBg = CREAM_BG;
+    const cardBg = CARD_BG;
+    const mutedText = TEXT_MUTED;
+    const borderSubtle = BORDER;
+    const iconMuted = '#57534e';
 
     const fetchConversations = async () => {
         try {
@@ -171,23 +176,28 @@ export default function Messages() {
         return list;
     }, [conversations, filter, searchQuery, userType]);
 
+    const openCompose = () => {
+        if (userType === 'chef') {
+            router.push('/(tabs)/BookingsScreen');
+        } else {
+            router.push('/(tabs)/SearchScreen');
+        }
+    };
+
     const renderConversation = ({ item }) => {
         const otherUserName = getOtherName(item);
         const { first, last, url } = getPhotoFirstLast(item);
         const hasUnread = item.unread_count > 0;
         const initials = getInitials(first, last);
-        const palette = isLight ? AVATAR_PALETTE_LIGHT : AVATAR_PALETTE_DARK;
-        const bgColor = palette[hashString(otherUserName) % palette.length];
-        const initialsColor = isLight ? getTailwindColor('primary.400') : getTailwindColor('primary.100');
+        const bgColor = AVATAR_PALETTE[hashString(otherUserName) % AVATAR_PALETTE.length];
+        const initialsColor = GREEN;
 
         return (
             <Pressable
                 onPress={() => handleConversationPress(item)}
-                android_ripple={{ color: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)' }}
+                android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
                 style={({ pressed }) => ({
-                    backgroundColor: pressed
-                        ? (isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.05)')
-                        : 'transparent',
+                    backgroundColor: pressed ? 'rgba(0,0,0,0.03)' : 'transparent',
                 })}
             >
                 <View
@@ -232,7 +242,7 @@ export default function Messages() {
                                     style={{
                                         fontSize: 16,
                                         fontWeight: hasUnread ? '700' : '600',
-                                        color: isLight ? '#1c1917' : '#fafaf9',
+                                        color: TEXT_PRIMARY,
                                     }}
                                     numberOfLines={1}
                                 >
@@ -242,7 +252,7 @@ export default function Messages() {
                                     style={{
                                         marginTop: 4,
                                         fontSize: 14,
-                                        color: hasUnread ? (isLight ? '#44403c' : '#e7e5e4') : mutedText,
+                                        color: hasUnread ? TEXT_SECONDARY : mutedText,
                                         fontWeight: hasUnread ? '600' : '400',
                                     }}
                                     numberOfLines={1}
@@ -284,7 +294,7 @@ export default function Messages() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 justify-center items-center bg-base-100 dark:bg-base-dark-100">
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: CREAM_BG }}>
                     <LoadingIcon message="Loading messages..." />
                 </View>
             </>
@@ -295,16 +305,16 @@ export default function Messages() {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 bg-base-100 dark:bg-base-dark-100 justify-center items-center px-6">
-                    <Octicons name="alert" size={48} color={manualTheme === 'dark' ? '#D9F99D ' : '#4D7C0F'} />
-                    <Text className="text-gray-900 dark:text-gray-100 text-lg font-semibold mt-4">
+                <View style={{ flex: 1, backgroundColor: CREAM_BG, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+                    <Octicons name="alert" size={48} color={GREEN} />
+                    <Text style={{ color: TEXT_PRIMARY, fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
                         {error}
                     </Text>
                     <TouchableOpacity
                         onPress={fetchConversations}
-                        className="bg-primary-500 px-6 py-3 rounded-lg mt-4"
+                        style={{ backgroundColor: GREEN, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}
                     >
-                        <Text className="text-white font-semibold">Try Again</Text>
+                        <Text style={{ color: '#fff', fontWeight: '600' }}>Try Again</Text>
                     </TouchableOpacity>
                 </View>
             </>
@@ -324,7 +334,7 @@ export default function Messages() {
                         style={{
                             fontSize: 28,
                             fontWeight: '800',
-                            color: isLight ? '#1c1917' : '#fafaf9',
+                            color: TEXT_PRIMARY,
                             letterSpacing: -0.5,
                         }}
                     >
@@ -337,7 +347,7 @@ export default function Messages() {
                                 width: 40,
                                 height: 40,
                                 borderRadius: 20,
-                                backgroundColor: isLight ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.08)',
+                                backgroundColor: CARD_BG,
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 borderWidth: 1,
@@ -346,6 +356,22 @@ export default function Messages() {
                             accessibilityLabel="Focus search"
                         >
                             <Octicons name="search" size={20} color={iconMuted} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={openCompose}
+                            style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 20,
+                                backgroundColor: CARD_BG,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderWidth: 1,
+                                borderColor: borderSubtle,
+                            }}
+                            accessibilityLabel="New message"
+                        >
+                            <Octicons name="comment" size={20} color={iconMuted} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -356,7 +382,7 @@ export default function Messages() {
                         alignItems: 'center',
                         borderRadius: 999,
                         borderWidth: 1,
-                        borderColor: isLight ? '#e7e5e4' : borderSubtle,
+                        borderColor: BORDER,
                         backgroundColor: cardBg,
                         paddingHorizontal: 14,
                         paddingVertical: Platform.OS === 'ios' ? 10 : 4,
@@ -373,7 +399,7 @@ export default function Messages() {
                         style={{
                             flex: 1,
                             fontSize: 16,
-                            color: isLight ? '#1c1917' : '#fafaf9',
+                            color: TEXT_PRIMARY,
                             paddingVertical: Platform.OS === 'android' ? 8 : 0,
                         }}
                     />
@@ -390,21 +416,21 @@ export default function Messages() {
                             <Pressable
                                 key={tab}
                                 onPress={() => setFilter(tab)}
-                                android_ripple={{ color: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)' }}
+                                android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
                                 style={{
                                     paddingHorizontal: 18,
                                     paddingVertical: 8,
                                     borderRadius: 999,
                                     borderWidth: 1.5,
-                                    borderColor: active ? '#2d6a4f' : '#dde8dd',
-                                    backgroundColor: active ? '#2d6a4f' : '#fff',
+                                    borderColor: active ? GREEN : '#dde8dd',
+                                    backgroundColor: active ? GREEN : CARD_BG,
                                 }}
                             >
                                 <Text
                                     style={{
                                         fontSize: 14,
                                         fontWeight: '600',
-                                        color: active ? '#ffffff' : '#4a7c59',
+                                        color: active ? '#ffffff' : GREEN_MUTED,
                                     }}
                                 >
                                     {tab}
@@ -416,16 +442,12 @@ export default function Messages() {
             </View>
 
             {listEmpty ? (
-                <View className="flex-1 justify-center items-center px-6">
-                    <Octicons
-                        name="comment-discussion"
-                        size={64}
-                        color={manualTheme === 'light' ? '#4D7C0F' : '#D9F99D '}
-                    />
-                    <Text className="text-gray-900 dark:text-gray-100 text-xl font-semibold mt-4 text-center">
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+                    <Octicons name="comment-discussion" size={64} color={GREEN} />
+                    <Text style={{ color: TEXT_PRIMARY, fontSize: 20, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
                         No messages yet
                     </Text>
-                    <Text className="text-gray-600 dark:text-gray-400 text-center mt-2">
+                    <Text style={{ color: TEXT_MUTED, textAlign: 'center', marginTop: 8, fontSize: 15 }}>
                         Book a chef to start chatting
                     </Text>
                 </View>
@@ -444,7 +466,7 @@ export default function Messages() {
                             ios: {
                                 shadowColor: '#000',
                                 shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: isLight ? 0.06 : 0.2,
+                                shadowOpacity: 0.06,
                                 shadowRadius: 12,
                             },
                             android: { elevation: 3 },
@@ -454,7 +476,7 @@ export default function Messages() {
                     {filteredEmpty ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
                             <Octicons name="filter" size={40} color={mutedText} />
-                            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '600', color: isLight ? '#44403c' : '#e7e5e4' }}>
+                            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '600', color: TEXT_SECONDARY }}>
                                 No conversations match
                             </Text>
                             <Text style={{ marginTop: 4, fontSize: 14, color: mutedText, textAlign: 'center' }}>
@@ -473,7 +495,7 @@ export default function Messages() {
                                 <RefreshControl
                                     refreshing={refreshing}
                                     onRefresh={onRefresh}
-                                    tintColor="#65A30D"
+                                    tintColor={GREEN}
                                 />
                             }
                             contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }}
