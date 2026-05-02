@@ -40,7 +40,7 @@ def create_booking():
         
         customer_id = data.get('customer_id')
         cuisine_type = data.get('cuisine_type')
-        meal_type = data.get('meal_type')
+        meal_type = (data.get('meal_type') or '').strip().lower()
         event_type = data.get('event_type', 'dinner')
         booking_date = data.get('booking_date')
         booking_time = data.get('booking_time')
