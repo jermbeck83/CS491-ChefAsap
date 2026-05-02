@@ -18,12 +18,12 @@ from services.llm_service import call_llm, DEFAULT_MODEL, FAST_MODEL
 # ---------------------------------------------------------------------------
 
 def _get_chef_id_for_user(conn, user_id: int) -> int | None:
-    """In this schema the chef profile id == the auth user id (chefs.id = users.id)."""
+    """Look up chef_id from the users table using the JWT user_id."""
     cursor = get_cursor(conn, dictionary=True)
     try:
-        cursor.execute("SELECT id FROM chefs WHERE id = %s", (user_id,))
+        cursor.execute("SELECT chef_id FROM users WHERE id = %s", (user_id,))
         row = cursor.fetchone()
-        return row["id"] if row else None
+        return row["chef_id"] if row and row["chef_id"] else None
     finally:
         cursor.close()
 
