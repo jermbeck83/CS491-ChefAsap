@@ -60,3 +60,45 @@ def get_unmet_demand():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+@dashboard_bp.route('/metrics/recent-bookings', methods=['GET'])
+def get_recent_bookings():
+    """Fetches recent bookings, specifically including fraud metadata for the Fraud Desk."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+
+        # Query recent bookings, including the fraud metadata we just added
+        cursor.execute('''
+            SELECT 
+                b.id as booking_id, 
+                b.customer_id, 
+                b.chef_id, 
+                b.total_cost, 
+                b.status,
+                b.fraud_score, 
+                b.fraud_flags, 
+                b.is_flagged_fraud,
+                b.created_at
+            FROM bookings b
+            ORDER BY b.created_at DESC
+            LIMIT 50
+        ''')
+        data = cursor.fetchall()
+        
+        # Ensure fraud_score is a float for the frontend parser
+        for row in data:
+            if row['fraud_score'] is not None:
+                row['fraud_score'] = float(row['fraud_score'])
+            
+        return jsonify({"status": "success", "data": data}), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching recent bookings: {e}")
+        return jsonify({"error": "Failed to fetch recent bookings"}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+        
