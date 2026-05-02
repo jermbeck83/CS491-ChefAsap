@@ -32,6 +32,7 @@ from blueprints.dashboard_bp import dashboard_bp
 from blueprints.pricing_bp import pricing_bp
 from blueprints.menu_event_planner_bp import menu_event_planner_bp
 from blueprints.recommendation_bp import recommendation_bp
+from blueprints.chef_productivity_bp import chef_productivity_bp
 import socket
 
 app = Flask(__name__)
@@ -84,6 +85,7 @@ app.register_blueprint(dashboard_bp)
 app.register_blueprint(pricing_bp, url_prefix='/api/v1/pricing')
 app.register_blueprint(menu_event_planner_bp, url_prefix='/api/v1/menu-planner')
 app.register_blueprint(recommendation_bp, url_prefix='/api/v1/recommendations')
+app.register_blueprint(chef_productivity_bp, url_prefix='/api/v1/chef-productivity')
 
 @app.route('/')
 def index():
