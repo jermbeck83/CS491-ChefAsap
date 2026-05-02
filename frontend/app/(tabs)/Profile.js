@@ -1,5 +1,6 @@
+import React from 'react';
 import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect  } from "expo-router";
 import { ScrollView, Text, View, Alert, TouchableOpacity, StyleSheet } from "react-native";
 
 import getEnvVars from "../../config";
@@ -45,7 +46,8 @@ export default function ProfileScreen() {
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
 
-    useEffect(() => {
+    useFocusEffect(
+        React.useCallback(() => {
         const fetchProfile = async () => {
             if (!userId || !token || !userType || !profileId) return;
             setLoading(true);
@@ -72,7 +74,8 @@ export default function ProfileScreen() {
             }
         };
         fetchProfile();
-    }, [profileId, userId, userType, token, apiUrl]);
+    }, [profileId, userId, userType, token, apiUrl])
+    );
 
     useEffect(() => {
         const fetchCuisines = async () => {
@@ -225,7 +228,6 @@ export default function ProfileScreen() {
         return (
             <View style={[s.screen, { justifyContent: 'center', alignItems: 'center' }]}>
                 <LoadingIcon message="Loading Profile..." />
-                <Button title="Log out" style="primary" customClasses="min-w-[50%]" onPress={logout} />
             </View>
         );
     }
@@ -248,9 +250,9 @@ export default function ProfileScreen() {
                 <View style={s.cardTopActions}>
                     <ThemeButton />
                     <TouchableOpacity
-                        onPress={() => {}}
+                        onPress={() => router.push('/ProfileSettings')}
                         style={s.iconBtn}
-                        // href="/ProfileSettings" — keep as Button below if needed
+
                     >
                         <Octicons name="gear" size={18} color={GREEN} />
                     </TouchableOpacity>

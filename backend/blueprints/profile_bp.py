@@ -21,7 +21,7 @@ def validate_image_url(url):
     if not url:
         return True  # Image is optional
     # Check if it's a valid URL pattern or file path
-    return url.startswith(('http://', 'https://', '/uploads/', './uploads/')) or '.' in url
+    return url.startswith(('http://', 'https://', '/uploads/', './uploads/', 'data:image/')) or '.' in url
 
 @profile_bp.route('/chef/<int:chef_id>', methods=['GET'])
 def get_chef_profile(chef_id):
@@ -858,7 +858,7 @@ def update_customer_profile(customer_id):
 
 @profile_bp.route('/customer/<int:customer_id>/photo', methods=['POST'])
 def upload_customer_photo(customer_id):
-    """Upload and update customer profile photo"""
+    """Upload and update customer profile photo - stores as base64 in DB"""
     try:
         if 'photo' not in request.files:
             return jsonify({'error': 'No photo uploaded'}), 400
@@ -866,18 +866,13 @@ def upload_customer_photo(customer_id):
         if photo.filename == '':
             return jsonify({'error': 'No selected file'}), 400
 
-        # Ensure directory exists (use absolute path)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        photo_dir = os.path.join(base_dir, 'static', 'profile_photos')
-        os.makedirs(photo_dir, exist_ok=True)
+        import base64
+        photo_data = photo.read()
+        ext = photo.filename.rsplit('.', 1)[-1].lower()
+        mime = f'image/{ext}' if ext != 'jpg' else 'image/jpeg'
+        b64 = base64.b64encode(photo_data).decode('utf-8')
+        photo_url = f'data:{mime};base64,{b64}'
 
-        filename = secure_filename(f"profile_customer{customer_id}.{photo.filename.rsplit('.', 1)[-1]}")
-        filepath = os.path.join(photo_dir, filename)
-        photo.save(filepath)
-
-        photo_url = f"/static/profile_photos/{filename}"
-
-        # Update photo_url in database
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('UPDATE customers SET photo_url = %s WHERE id = %s', (photo_url, customer_id))
@@ -888,10 +883,10 @@ def upload_customer_photo(customer_id):
         return jsonify({'photo_url': photo_url}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
+
 @profile_bp.route('/chef/<int:chef_id>/photo', methods=['POST'])
 def upload_chef_photo(chef_id):
-    """Upload and update chef profile photo"""
+    """Upload and update chef profile photo - stores as base64 in DB"""
     try:
         if 'photo' not in request.files:
             return jsonify({'error': 'No photo uploaded'}), 400
@@ -899,18 +894,13 @@ def upload_chef_photo(chef_id):
         if photo.filename == '':
             return jsonify({'error': 'No selected file'}), 400
 
-        # Ensure directory exists (use absolute path)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        photo_dir = os.path.join(base_dir, 'static', 'profile_photos')
-        os.makedirs(photo_dir, exist_ok=True)
+        import base64
+        photo_data = photo.read()
+        ext = photo.filename.rsplit('.', 1)[-1].lower()
+        mime = f'image/{ext}' if ext != 'jpg' else 'image/jpeg'
+        b64 = base64.b64encode(photo_data).decode('utf-8')
+        photo_url = f'data:{mime};base64,{b64}'
 
-        filename = secure_filename(f"profile_chef{chef_id}.{photo.filename.rsplit('.', 1)[-1]}")
-        filepath = os.path.join(photo_dir, filename)
-        photo.save(filepath)
-
-        photo_url = f"/static/profile_photos/{filename}"
-
-        # Update photo_url in database
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('UPDATE chefs SET photo_url = %s WHERE id = %s', (photo_url, chef_id))
