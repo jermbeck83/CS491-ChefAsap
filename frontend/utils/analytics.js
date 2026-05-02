@@ -6,9 +6,14 @@ export async function logAppEvent({
     token,
     eventCategory,
     eventAction,
+    actorType,
     actorId,
+    sessionId,
     eventData = {},
 }) {
+
+    console.log("📊 ANALYTICS CHECK:", { actorType, sessionId, actorId });
+
     if (!token || !eventCategory || !eventAction || !actorId) {
         return;
     }
@@ -23,7 +28,9 @@ export async function logAppEvent({
             body: JSON.stringify({
                 event_category: eventCategory,
                 event_action: eventAction,
+                actor_type: actorType,
                 actor_id: actorId,
+                session_id: sessionId,
                 event_data: eventData,
             }),
         });

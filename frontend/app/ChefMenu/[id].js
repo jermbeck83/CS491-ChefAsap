@@ -12,6 +12,8 @@ import RatingsDisplay from '../components/RatingsDisplay';
 
 import { getCartConflicts, getMealTypeForHour, MEAL_TIME_WINDOWS } from '../../utils/mealTimeUtils';
 
+import { logAppEvent } from '../../utils/analytics';
+
 const GREEN       = '#2d6a4f';
 const GREEN_LIGHT = '#d8f3dc';
 const BG          = '#fefce8';
@@ -182,7 +184,7 @@ export default function ChefMenu() {
     const { id } = useLocalSearchParams();
     const router  = useRouter();
     const insets  = useSafeAreaInsets();
-    const { token, userId, profileId, userType } = useAuth();
+    const { token, userId, profileId, userType, sessionId } = useAuth();
     const { apiUrl } = getEnvVars();
 
     const [chefData,     setChefData]     = useState(null);
@@ -287,6 +289,20 @@ export default function ChefMenu() {
 
     const handleAddToOrder = (item) => {
         if (!item.is_available) { Alert.alert('Not Available', 'This dish is currently unavailable.'); return; }
+        // --- ADD ANALYTICS HERE ---
+        logAppEvent({
+            token: token,
+            eventCategory: 'interaction',
+            eventAction: 'add_to_cart',
+            actorType: userType,
+            actorId: profileId,
+            sessionId: sessionId,
+            eventData: { 
+                dish_name: item.dish_name, 
+                price: item.price, 
+                chef_id: id 
+            }
+        });
         const existing = orderItems.find(o => o.id === item.id);
         if (existing) setOrderItems(orderItems.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
         else          setOrderItems([...orderItems, { ...item, quantity: 1 }]);
@@ -410,6 +426,23 @@ export default function ChefMenu() {
             setShowOrderModal(false);
             setPaymentProcessing(false);
             const card = paymentMethods.find(pm => pm.id === selectedPaymentMethod);
+
+            // --- ADD ANALYTICS HERE ---
+            logAppEvent({
+                token: token,
+                eventCategory: 'transaction',
+                eventAction: 'checkout_success',
+                actorType: userType,
+                actorId: profileId,
+                sessionId: sessionId,
+                eventData: { 
+                    booking_id: bookResult.booking_id, 
+                    total_paid: payableTotal.toFixed(2),
+                    item_count: orderItems.length,
+                    surge_multiplier: quoteMult
+                }
+            });
+
             Alert.alert('Booking Confirmed! 🎉',
                 'Booking #' + bookResult.booking_id + '\nAmount: $' + payableTotal.toFixed(2) + '\nCard: ' + card?.brand?.toUpperCase() + ' •••• ' + card?.last4 + '\nDate: ' + selected.toLocaleString('en-US'),
                 [{ text: 'OK', onPress: () => { setOrderItems([]); setSelectedPaymentMethod(null); } }]

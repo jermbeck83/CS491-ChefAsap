@@ -10,11 +10,17 @@ export const AuthContext = createContext({
     userId: null,
     profileId: null,
     token: null,
+    sessionId: null,
     login: async () => { },
     logout: async () => { },
 });
 
 export const useAuth = () => useContext(AuthContext);
+
+// Simple generator for a unique session ID
+const generateSessionId = () => {
+    return 'sess_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+};
 
 export function AuthProvider({ children}) {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -22,10 +28,15 @@ export function AuthProvider({ children}) {
     const [userId, setUserId] = useState(null);
     const [profileId, setProfileId] = useState(null);
     const [token, setToken] = useState(null);
+    const [sessionId, setSessionId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
+
+        // 3. Generate and set the session ID once when the app opens
+        setSessionId(generateSessionId());
+
         const loadSession = async () => {
             try {
                 const storedToken = await SecureStore.getItemAsync('auth_token');
@@ -95,6 +106,7 @@ export function AuthProvider({ children}) {
         userId,
         profileId,
         token,
+        sessionId,
         login,
         logout,
         isLoading,
