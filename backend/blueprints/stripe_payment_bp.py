@@ -379,11 +379,10 @@ def attach_payment_method_with_token():
 
         # Use existing payment method or create from token
         if payment_method_id:
-            stripe.PaymentMethod.attach(
+            payment_method = stripe.PaymentMethod.attach(
                 payment_method_id,
                 customer=stripe_customer_id
             )
-            payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
         else:
             payment_method = stripe.PaymentMethod.create(
                 type='card',
