@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useLocalSearchParams, Stack, useRouter, useFocusEffect } from 'expo-router';
 import { ScrollView, Text, Alert, View, Modal, Image, TouchableOpacity, StyleSheet, TextInput } from "react-native";
 import { Octicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -185,6 +185,42 @@ export default function ChefMenu() {
     const router  = useRouter();
     const insets  = useSafeAreaInsets();
     const { token, userId, profileId, userType, sessionId } = useAuth();
+
+    // 1. Create a reference to store the start time
+    const startTimeRef = useRef(null);
+
+    // 2. Start the timer when they enter, log the time when they leave
+    useFocusEffect(
+        useCallback(() => {
+            // Screen is focused! Start the stopwatch.
+            startTimeRef.current = Date.now();
+
+            return () => {
+                // Screen is blurred (user left)! Stop the stopwatch.
+                if (startTimeRef.current && userType === 'customer') {
+                    const timeSpentMs = Date.now() - startTimeRef.current;
+                    const timeSpentSeconds = Math.round(timeSpentMs / 1000);
+
+                    // Only log if they actually stayed for more than 30 seconds
+                    if (timeSpentSeconds >= 30) {
+                        logAppEvent({
+                            token: token,
+                            eventCategory: 'navigation',
+                            eventAction: 'view_chef_menu', // Use 'view_chef_profile' on the profile screen
+                            actorType: userType,
+                            actorId: profileId,
+                            sessionId: sessionId,
+                            eventData: { 
+                                viewed_chef_id: parseInt(id, 10),
+                                time_spent_seconds: timeSpentSeconds 
+                            }
+                        });
+                    }
+                }
+            };
+        }, [id, token, profileId, userType, sessionId])
+    );
+
     const { apiUrl } = getEnvVars();
 
     const [chefData,     setChefData]     = useState(null);
