@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, Text, View, Alert, TouchableOpacity, RefreshControl } from "react-native";
+import { ScrollView, Text, View, Alert, TouchableOpacity, RefreshControl, StyleSheet } from "react-native";
 import { Stack, useRouter } from 'expo-router';
 import { Octicons } from '@expo/vector-icons';
 
@@ -11,6 +11,30 @@ import Button from "./components/Button";
 import Card from "./components/Card";
 import CalendarConnectButton from "./components/CalendarConnectButton";
 import CalendarIcsUploadButton from "./components/CalendarIcsUploadButton";
+
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+const BG = '#fefce8';
+const BORDER = '#e2ece2';
+const TEXT = '#1a2e1a';
+const TEXT_MID = '#4a7c59';
+const TEXT_SOFT = '#8aab8a';
+
+const STATUS_COLORS = {
+    pending:   { bg: '#fef9c3', text: '#854d0e' },
+    accepted:  { bg: '#dbeafe', text: '#1e40af' },
+    declined:  { bg: '#fee2e2', text: '#991b1b' },
+    completed: { bg: '#f0fdf4', text: '#166534' },
+    cancelled: { bg: '#fee2e2', text: '#991b1b' },
+};
+
+const STATUS_BUTTONS = [
+    { label: 'All', value: 'all' },
+    { label: 'Pending', value: 'pending' },
+    { label: 'Accepted', value: 'accepted' },
+    { label: 'Completed', value: 'completed' },
+    { label: 'Declined', value: 'declined' },
+];
 
 export default function ChefOrdersScreen() {
     const { token, profileId, userType } = useAuth();
@@ -24,111 +48,65 @@ export default function ChefOrdersScreen() {
 
     const fetchBookings = async () => {
         try {
-            console.log('[ChefOrdersScreen] Starting fetchBookings...');
-            console.log('[ChefOrdersScreen] profileId:', profileId);
-            console.log('[ChefOrdersScreen] userType:', userType);
-            console.log('[ChefOrdersScreen] selectedStatus:', selectedStatus);
-            
             setLoading(true);
-            
-            const url = selectedStatus === 'all' 
+            const url = selectedStatus === 'all'
                 ? `${apiUrl}/booking/chef/${profileId}/bookings`
                 : `${apiUrl}/booking/chef/${profileId}/bookings?status=${selectedStatus}`;
-
-            console.log('[ChefOrdersScreen] Fetching from URL:', url);
-
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             });
-
-            console.log('[ChefOrdersScreen] Response status:', response.status);
             const data = await response.json();
-            console.log('[ChefOrdersScreen] Response data:', data);
-
-            if (response.ok) {
-                console.log('[ChefOrdersScreen] Setting bookings:', data.bookings?.length || 0, 'bookings');
-                setBookings(data.bookings || []);
-            } else {
-                console.error('[ChefOrdersScreen] Error response:', data);
-                Alert.alert('Error', data.error || 'Failed to load bookings');
-            }
+            if (response.ok) setBookings(data.bookings || []);
+            else Alert.alert('Error', data.error || 'Failed to load bookings');
         } catch (error) {
-            console.error('[ChefOrdersScreen] Fetch error:', error);
             Alert.alert('Error', 'Network error. Could not load bookings.');
         } finally {
-            console.log('[ChefOrdersScreen] Setting loading to false');
             setLoading(false);
             setRefreshing(false);
         }
     };
 
     useEffect(() => {
-        if (userType !== 'chef') {
-            Alert.alert('Access Denied', 'Only chefs can view this page');
-            router.back();
-            return;
-        }
+        if (userType !== 'chef') { Alert.alert('Access Denied', 'Only chefs can view this page'); router.back(); return; }
         fetchBookings();
     }, [selectedStatus]);
 
-    const onRefresh = () => {
-        setRefreshing(true);
-        fetchBookings();
-    };
+    const onRefresh = () => { setRefreshing(true); fetchBookings(); };
 
     const updateBookingStatus = async (bookingId, newStatus) => {
         try {
             const response = await fetch(`${apiUrl}/booking/booking/${bookingId}/status`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ status: newStatus }),
             });
-
             const data = await response.json();
-
-            if (response.ok) {
-                Alert.alert('Success', `Booking ${newStatus}`);
-                fetchBookings(); // Refresh the list
-            } else {
-                Alert.alert('Error', data.error || 'Failed to update booking');
-            }
+            if (response.ok) { Alert.alert('Success', `Booking ${newStatus}`); fetchBookings(); }
+            else Alert.alert('Error', data.error || 'Failed to update booking');
         } catch (error) {
-            console.error('Error updating booking:', error);
             Alert.alert('Error', 'Network error. Could not update booking.');
         }
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'pending': return 'bg-yellow-500';
-            case 'accepted': return 'bg-blue-500';
-            case 'declined': return 'bg-red-500';
-            case 'completed': return 'bg-gray-500';
-            case 'cancelled': return 'bg-red-500';
-            default: return 'bg-gray-400';
-        }
+    const handleKitchenAssistant = (booking) => {
+        router.push({
+            pathname: '/ChefProductivityScreen',
+            params: {
+                bookingId: booking.booking_id,
+                bookingDate: booking.booking_date,
+                bookingTime: booking.booking_time,
+                guestCount: booking.number_of_people,
+                customerName: booking.customer_name,
+            },
+        });
     };
-
-    const statusButtons = [
-        { label: 'All', value: 'all' },
-        { label: 'Pending', value: 'pending' },
-        { label: 'Accepted', value: 'accepted' },
-        { label: 'Completed', value: 'completed' },
-        { label: 'Declined', value: 'declined' },
-    ];
 
     if (loading && !refreshing) {
         return (
             <>
                 <Stack.Screen options={{ headerShown: false }} />
-                <View className="flex-1 justify-center items-center bg-base-100 dark:bg-base-dark-100">
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: BG }}>
                     <LoadingIcon message="Loading bookings..." />
                 </View>
             </>
@@ -137,240 +115,225 @@ export default function ChefOrdersScreen() {
 
     return (
         <>
-            <Stack.Screen options={{ headerShown: false }} />
-            <ScrollView 
-                className="flex-1 bg-base-100 dark:bg-base-dark-100 p-5"
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                }
+            <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: BG } }} />
+            <ScrollView
+                style={{ flex: 1, backgroundColor: BG }}
+                contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GREEN} />}
             >
-                <View className="flex-row items-center justify-between mb-4">
-                    <Text className="text-3xl font-bold text-primary-400 dark:text-dark-400">
-                        My Bookings
-                    </Text>
-                    <TouchableOpacity onPress={onRefresh}>
-                        <Octicons name="sync" size={24} color="#4d7c0f" />
+                {/* Header */}
+                <View style={s.pageHeader}>
+                    <Text style={s.pageTitle}>My Bookings</Text>
+                    <TouchableOpacity onPress={onRefresh} style={s.refreshBtn}>
+                        <Octicons name="sync" size={18} color={GREEN} />
                     </TouchableOpacity>
                 </View>
 
-                {/* Calendar Integration */}
-                <Card 
-                    title="Calendar Sync" 
-                    headerIcon="calendar"
-                    isCollapsible={true}
-                    startExpanded={false}
-                    customClasses="mb-4"
-                >
-                    <View className="space-y-3">
-                        <Text className="text-sm text-primary-400 dark:text-dark-400 mb-2">
-                            Connect your Google Calendar to sync bookings automatically
-                        </Text>
-                        <CalendarConnectButton 
-                            onSynced={(data) => {
-                                Alert.alert('Success', `Synced ${data.count || 0} events from Google Calendar`);
-                                fetchBookings(); // Refresh bookings after sync
-                            }}
-                        />
-                        <View className="border-t border-primary-200 dark:border-dark-200 my-3" />
-                        <Text className="text-sm text-primary-400 dark:text-dark-400 mb-2">
-                            Or import bookings from an .ics calendar file
-                        </Text>
-                        <CalendarIcsUploadButton 
-                            onUploaded={(count) => {
-                                Alert.alert('Success', `Imported ${count} events from .ics file`);
-                                fetchBookings(); // Refresh bookings after import
-                            }}
-                        />
-                    </View>
+                {/* Calendar Sync */}
+                <Card title="Calendar Sync" headerIcon="calendar" isCollapsible startExpanded={false}>
+                    <Text style={s.cardNote}>Connect Google Calendar to sync bookings automatically</Text>
+                    <CalendarConnectButton onSynced={(data) => { Alert.alert('Success', `Synced ${data.count || 0} events`); fetchBookings(); }} />
+                    <View style={s.divider} />
+                    <Text style={s.cardNote}>Or import from an .ics calendar file</Text>
+                    <CalendarIcsUploadButton onUploaded={(count) => { Alert.alert('Success', `Imported ${count} events`); fetchBookings(); }} />
                 </Card>
 
                 {/* Status Filter */}
-                <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    className="mb-4"
-                >
-                    {statusButtons.map((btn) => (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
+                    {STATUS_BUTTONS.map(btn => (
                         <TouchableOpacity
                             key={btn.value}
                             onPress={() => setSelectedStatus(btn.value)}
-                            className={`mr-2 px-4 py-2 rounded-full ${
-                                selectedStatus === btn.value 
-                                    ? 'bg-lime-600' 
-                                    : 'bg-gray-200 dark:bg-gray-700'
-                            }`}
+                            style={[s.filterPill, selectedStatus === btn.value && s.filterPillActive]}
                         >
-                            <Text className={`${
-                                selectedStatus === btn.value 
-                                    ? 'text-white font-bold' 
-                                    : 'text-primary-400 dark:text-dark-400'
-                            }`}>
+                            <Text style={[s.filterPillText, selectedStatus === btn.value && s.filterPillTextActive]}>
                                 {btn.label}
                             </Text>
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
 
-                {/* Bookings List */}
+                {/* Bookings */}
                 {bookings.length === 0 ? (
-                    <Card title="No Bookings">
-                        <Text className="text-center text-primary-400 dark:text-dark-400">
-                            No bookings found for this status.
-                        </Text>
-                    </Card>
+                    <View style={s.emptyCard}>
+                        <Octicons name="calendar" size={40} color={GREEN_LIGHT} />
+                        <Text style={s.emptyText}>No bookings found for this status.</Text>
+                    </View>
                 ) : (
                     bookings.map((booking) => {
-                        // Format the title as "Customer Name - Date"
                         const bookingDate = new Date(booking.booking_date);
-                        const formattedDate = bookingDate.toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric',
-                            year: 'numeric'
-                        });
-                        const displayTitle = booking.customer_name 
-                            ? `${booking.customer_name} - ${formattedDate}`
+                        const formattedDate = bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const displayTitle = booking.customer_name
+                            ? `${booking.customer_name} — ${formattedDate}`
                             : `Booking #${booking.booking_id}`;
+                        const statusStyle = STATUS_COLORS[booking.status] || STATUS_COLORS.pending;
+                        const isUpcoming = ['pending', 'accepted'].includes(booking.status);
 
                         return (
-                        <Card
-                            key={booking.booking_id}
-                            title={displayTitle}
-                            isCollapsible={true}
-                            startExpanded={false}
-                        >
-                            <View className="space-y-2">
-                                {/* Customer Info */}
-                                <View className="bg-primary-50 dark:bg-dark-50 p-3 rounded-lg">
-                                    <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400">
-                                        Customer: {booking.customer_name}
-                                    </Text>
-                                </View>
-
-                                {/* Booking Details */}
-                                <View className="bg-blue-50 dark:bg-blue-900 p-3 rounded-lg">
-                                    <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400">
-                                        Booking Date & Time:
-                                    </Text>
-                                    <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                        {booking.booking_date} at {booking.booking_time}
-                                    </Text>
-                                </View>
-
-                                <View className="flex-row justify-between">
-                                    <View>
-                                        <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                            Cuisine: {booking.cuisine_type}
-                                        </Text>
-                                        <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                            Meal Type: {booking.meal_type}
-                                        </Text>
-                                    </View>
-                                    <View>
-                                        <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                            People: {booking.number_of_people}
-                                        </Text>
+                            <View key={booking.booking_id} style={s.bookingCard}>
+                                {/* Card Header */}
+                                <View style={s.bookingHeader}>
+                                    <Text style={s.bookingTitle} numberOfLines={1}>{displayTitle}</Text>
+                                    <View style={[s.statusBadge, { backgroundColor: statusStyle.bg }]}>
+                                        <Text style={[s.statusText, { color: statusStyle.text }]}>{booking.status}</Text>
                                     </View>
                                 </View>
 
-                                {/* Total Cost */}
-                                {booking.total_cost && (
-                                    <Text className="text-xl font-bold text-primary-400 dark:text-dark-400">
-                                        Total: ${booking.total_cost.toFixed(2)}
-                                    </Text>
-                                )}
-
-                                {/* Status Badge */}
-                                <View className="flex-row items-center justify-between">
-                                    <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                        Status:
-                                    </Text>
-                                    <View className={`${getStatusColor(booking.status)} px-3 py-1 rounded-full`}>
-                                        <Text className="text-white font-bold capitalize">
-                                            {booking.status}
-                                        </Text>
+                                <View style={s.bookingBody}>
+                                    {/* Date & Time */}
+                                    <View style={s.infoRow}>
+                                        <Octicons name="clock" size={14} color={TEXT_SOFT} />
+                                        <Text style={s.infoText}>{booking.booking_date} at {booking.booking_time}</Text>
                                     </View>
-                                </View>
 
-                                {/* Special Notes */}
-                                {booking.special_notes && (
-                                    <View className="bg-yellow-50 dark:bg-yellow-900 p-3 rounded-lg">
-                                        <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400">
-                                            Special Notes:
-                                        </Text>
-                                        <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                            {booking.special_notes}
-                                        </Text>
+                                    {/* Guests & Cuisine */}
+                                    <View style={s.infoRow}>
+                                        <Octicons name="people" size={14} color={TEXT_SOFT} />
+                                        <Text style={s.infoText}>{booking.number_of_people} guests · {booking.cuisine_type} · {booking.meal_type}</Text>
                                     </View>
-                                )}
 
-                                {/* Pick Up Location (Chef's Address) */}
-                                <View className="bg-blue-50 dark:bg-blue-900 p-3 rounded-lg">
-                                    <Text className="text-sm font-semibold text-primary-400 dark:text-dark-400">
-                                        Pick Up Address:
-                                    </Text>
-                                    {booking.chef_address_line1 ? (
-                                        <View>
-                                            <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                                {booking.chef_address_line1}
-                                            </Text>
-                                            {booking.chef_address_line2 && (
-                                                <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                                    {booking.chef_address_line2}
-                                                </Text>
-                                            )}
-                                            <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                                {booking.chef_city}, {booking.chef_state} {booking.chef_zip_code}
+                                    {/* Total */}
+                                    {booking.total_cost && (
+                                        <View style={s.infoRow}>
+                                            <Octicons name="credit-card" size={14} color={TEXT_SOFT} />
+                                            <Text style={[s.infoText, { fontWeight: '700', color: GREEN }]}>
+                                                ${booking.total_cost.toFixed(2)}
                                             </Text>
                                         </View>
-                                    ) : (
-                                        <Text className="text-sm text-primary-400 dark:text-dark-400">
-                                            Address not available - Please contact chef
-                                        </Text>
+                                    )}
+
+                                    {/* Address */}
+                                    {booking.chef_address_line1 && (
+                                        <View style={s.infoRow}>
+                                            <Octicons name="location" size={14} color={TEXT_SOFT} />
+                                            <Text style={s.infoText}>
+                                                {booking.chef_address_line1}, {booking.chef_city}, {booking.chef_state}
+                                            </Text>
+                                        </View>
+                                    )}
+
+                                    {/* Special Notes */}
+                                    {booking.special_notes && (
+                                        <View style={s.notesBox}>
+                                            <Text style={s.notesLabel}>Special Notes</Text>
+                                            <Text style={s.notesText}>{booking.special_notes}</Text>
+                                        </View>
+                                    )}
+
+                                    {/* Kitchen Assistant Button */}
+                                    {isUpcoming && (
+                                        <TouchableOpacity
+                                            style={s.assistantBtn}
+                                            onPress={() => handleKitchenAssistant(booking)}
+                                            activeOpacity={0.85}
+                                        >
+                                            <Octicons name="sparkle-fill" size={15} color={GREEN} style={{ marginRight: 7 }} />
+                                            <Text style={s.assistantBtnText}>Kitchen Assistant</Text>
+                                        </TouchableOpacity>
+                                    )}
+
+                                    {/* Action Buttons */}
+                                    {booking.status === 'pending' && (
+                                        <View style={s.actionRow}>
+                                            <TouchableOpacity
+                                                style={[s.actionBtn, s.actionBtnPrimary]}
+                                                onPress={() => updateBookingStatus(booking.booking_id, 'accepted')}
+                                                activeOpacity={0.85}
+                                            >
+                                                <Text style={s.actionBtnPrimaryText}>Accept</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[s.actionBtn, s.actionBtnSecondary]}
+                                                onPress={() => updateBookingStatus(booking.booking_id, 'declined')}
+                                                activeOpacity={0.85}
+                                            >
+                                                <Text style={s.actionBtnSecondaryText}>Decline</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                    {booking.status === 'accepted' && (
+                                        <TouchableOpacity
+                                            style={[s.actionBtn, s.actionBtnPrimary, { marginTop: 10 }]}
+                                            onPress={() => updateBookingStatus(booking.booking_id, 'completed')}
+                                            activeOpacity={0.85}
+                                        >
+                                            <Text style={s.actionBtnPrimaryText}>Mark as Completed</Text>
+                                        </TouchableOpacity>
                                     )}
                                 </View>
-
-                                {/* Action Buttons */}
-                                {booking.status === 'pending' && (
-                                    <View className="flex-row space-x-2 mt-2">
-                                        <View className="flex-1 mr-2">
-                                            <Button
-                                                title="Accept"
-                                                style="primary"
-                                                onPress={() => updateBookingStatus(booking.booking_id, 'accepted')}
-                                            />
-                                        </View>
-                                        <View className="flex-1">
-                                            <Button
-                                                title="Decline"
-                                                style="secondary"
-                                                onPress={() => updateBookingStatus(booking.booking_id, 'declined')}
-                                            />
-                                        </View>
-                                    </View>
-                                )}
-
-                                {booking.status === 'accepted' && (
-                                    <Button
-                                        title="Mark as Completed"
-                                        style="primary"
-                                        onPress={() => updateBookingStatus(booking.booking_id, 'completed')}
-                                    />
-                                )}
                             </View>
-                        </Card>
                         );
                     })
                 )}
 
-                <Button
-                    title="← Back to Profile"
-                    style="secondary"
-                    href="/(tabs)/BookingsScreen"
-                    customClasses="min-w-[60%]"
-                />
-
-                <View className="h-8" />
+                <TouchableOpacity style={s.returnBtn} onPress={() => router.back()} activeOpacity={0.85}>
+                    <Text style={s.returnBtnText}>← Return</Text>
+                </TouchableOpacity>
             </ScrollView>
         </>
     );
 }
+
+const s = StyleSheet.create({
+    pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+    pageTitle: { fontSize: 28, fontWeight: '800', color: TEXT, letterSpacing: -0.5 },
+    refreshBtn: {
+        width: 38, height: 38, borderRadius: 19,
+        backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center',
+    },
+    cardNote: { fontSize: 13, color: TEXT_SOFT, marginBottom: 10 },
+    divider: { borderTopWidth: 1, borderTopColor: BORDER, marginVertical: 12 },
+    filterPill: {
+        paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+        borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff',
+    },
+    filterPillActive: { backgroundColor: GREEN, borderColor: GREEN },
+    filterPillText: { fontSize: 13, fontWeight: '600', color: TEXT_MID },
+    filterPillTextActive: { color: '#fff' },
+    emptyCard: {
+        backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+        padding: 40, alignItems: 'center',
+    },
+    emptyText: { fontSize: 14, color: TEXT_SOFT, marginTop: 12, textAlign: 'center' },
+    bookingCard: {
+        backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
+        marginBottom: 14, overflow: 'hidden',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+    },
+    bookingHeader: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 16, paddingVertical: 14,
+        borderBottomWidth: 1, borderBottomColor: BORDER,
+    },
+    bookingTitle: { fontSize: 15, fontWeight: '700', color: TEXT, flex: 1, marginRight: 10 },
+    statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+    statusText: { fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
+    bookingBody: { padding: 14 },
+    infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    infoText: { fontSize: 13, color: TEXT_MID, flex: 1 },
+    notesBox: {
+        backgroundColor: '#fffbeb', borderRadius: 10,
+        borderWidth: 1, borderColor: '#fde68a',
+        padding: 10, marginTop: 4, marginBottom: 8,
+    },
+    notesLabel: { fontSize: 11, fontWeight: '700', color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
+    notesText: { fontSize: 13, color: '#78350f' },
+    assistantBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: GREEN_LIGHT, borderWidth: 1.5, borderColor: GREEN,
+        borderRadius: 12, paddingVertical: 11, marginTop: 10, marginBottom: 4,
+    },
+    assistantBtnText: { fontSize: 14, fontWeight: '700', color: GREEN },
+    actionRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+    actionBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+    actionBtnPrimary: { backgroundColor: GREEN },
+    actionBtnPrimaryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    actionBtnSecondary: { borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff' },
+    actionBtnSecondaryText: { color: TEXT_MID, fontWeight: '600', fontSize: 14 },
+    returnBtn: {
+        paddingVertical: 14, borderRadius: 14, alignItems: 'center',
+        borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff', marginTop: 8,
+    },
+    returnBtnText: { color: TEXT_MID, fontWeight: '600', fontSize: 14 },
+});

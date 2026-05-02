@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Pressable, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import getEnvVars from '../../config';
 
@@ -12,9 +13,14 @@ const PX_PER_MIN = SLOT_HEIGHT / STEP_MIN;
 const TIME_COL_WIDTH = 68;
 const DAY_COLUMN_WIDTH = 100;
 const HEADER_HEIGHT = 50;
-const FOOTER_PADDING = 0;
-const DATE_HEADER_TEXT_STYLE = { fontSize: 13, fontWeight: '600' };
-const DEV_MOCK_BOOKINGS = false;
+
+const GREEN = '#2d6a4f';
+const GREEN_LIGHT = '#d8f3dc';
+const BG = '#fefce8';
+const BORDER = '#e2ece2';
+const TEXT_DARK = '#1a2e1a';
+const TEXT_MID = '#4a7c59';
+const TEXT_SOFT = '#8aab8a';
 
 const normalizeStatus = (s) => String(s || '').toLowerCase();
 const CHEF_ALLOWED = new Set(['accepted', 'completed', 'confirm', 'confirmed']);
@@ -93,17 +99,10 @@ function formatHeader(d) {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-const GREEN = '#2d6a4f';
-const GREEN_LIGHT = '#d8f3dc';
-const BG = '#fefce8';
-const BORDER = '#e2ece2';
-const TEXT_DARK = '#1a2e1a';
-const TEXT_MID = '#4a7c59';
-const TEXT_SOFT = '#8aab8a';
-
 export default function BookingsScreen() {
   const { apiUrl } = getEnvVars();
   const { token, userType, profileId } = useAuth();
+  const router = useRouter();
 
   const BOOKING_API_PREFIX = `${apiUrl}/booking`;
 
@@ -184,6 +183,71 @@ export default function BookingsScreen() {
     return () => { cancelled = true; };
   }, [token, profileId, userType, customerCalendarEndpoint, chefCalendarEndpoint, baseDate, weekDays, refreshKey]);
 
+  // Auto-scroll vertically to first event time (or 8 AM default)
+  // AND horizontally to the day that has the first event
+  useEffect(() => {
+    if (loading) return;
+    let targetHour = 8;
+    let targetDayIdx = -1;
+
+    if (events.length > 0) {
+      const sorted = [...events].sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+      const firstEvent = sorted[0];
+      targetHour = Math.max(START_HOUR, new Date(firstEvent.startDate).getHours() - 1);
+
+      // Find which day column index the first event falls on (0=Mon ... 6=Sun)
+      const eventDate = new Date(firstEvent.startDate);
+      const monday = getWeekStart(baseDate);
+      const diffDays = Math.round((eventDate - monday) / (24 * 3600 * 1000));
+      if (diffDays >= 0 && diffDays < 7) targetDayIdx = diffDays;
+    }
+
+    const scrollY = (targetHour - START_HOUR) * 60 * PX_PER_MIN;
+    // Scroll to center the target day — subtract half screen width so it's centered
+    const scrollX = targetDayIdx > 0 ? Math.max(0, targetDayIdx * DAY_COLUMN_WIDTH - DAY_COLUMN_WIDTH) : 0;
+
+    setTimeout(() => {
+      verticalScrollRef.current?.scrollTo({ y: scrollY, animated: true });
+      if (scrollX > 0) {
+        gridHScrollRef.current?.scrollTo({ x: scrollX, animated: true });
+        headerHScrollRef.current?.scrollTo({ x: scrollX, animated: true });
+      }
+    }, 350);
+  }, [events, loading]);
+
+  // Auto-jump calendar to week of earliest upcoming booking
+  // Only runs once after first load, not on every event change
+  const hasAutoJumped = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (hasAutoJumped.current) return;
+
+    // Fetch ALL bookings (not just current week) to find the next upcoming one
+    const fetchUpcoming = async () => {
+      if (!token || !profileId) return;
+      try {
+        const url = userType === 'chef'
+          ? `${apiUrl}/booking/chef/${profileId}/bookings`
+          : `${apiUrl}/booking/chef/${profileId}/bookings`;
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const bookings = data.bookings || data || [];
+        // Compare by date only (not time) so today's bookings are included
+        const todayYmd = formatYmd(new Date());
+        const upcoming = bookings
+          .map(b => ({ ...b, startDate: parseLocalDateTime(b.booking_date, b.booking_time) }))
+          .filter(b => b.booking_date >= todayYmd && (b.status === 'accepted' || b.status === 'pending'))
+          .sort((a, b) => a.startDate - b.startDate);
+        if (upcoming.length > 0) {
+          hasAutoJumped.current = true;
+          setBaseDate(upcoming[0].startDate);
+        }
+      } catch (e) {}
+    };
+    fetchUpcoming();
+  }, [loading]);
+
   const onPrevWeek = () => setBaseDate((d) => { const nd = new Date(d); nd.setDate(d.getDate() - 7); return nd; });
   const onNextWeek = () => setBaseDate((d) => { const nd = new Date(d); nd.setDate(d.getDate() + 7); return nd; });
   const onToday = () => setBaseDate(new Date());
@@ -206,6 +270,7 @@ export default function BookingsScreen() {
   const headerHScrollRef = useRef(null);
   const gridHScrollRef = useRef(null);
   const syncSourceRef = useRef(null);
+  const verticalScrollRef = useRef(null);
 
   return (
     <View style={s.screen}>
@@ -260,7 +325,7 @@ export default function BookingsScreen() {
       </View>
 
       {/* Grid */}
-      <ScrollView nestedScrollEnabled scrollEventThrottle={16} showsVerticalScrollIndicator>
+      <ScrollView ref={verticalScrollRef} nestedScrollEnabled scrollEventThrottle={16} showsVerticalScrollIndicator>
         <View style={{ flexDirection: 'row' }}>
 
           {/* Time column */}
@@ -391,12 +456,12 @@ export default function BookingsScreen() {
           <Text style={s.primaryBtnText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
         </TouchableOpacity>
         {userType === 'customer' && (
-          <TouchableOpacity style={s.secondaryBtn} onPress={() => {}} activeOpacity={0.85}>
+          <TouchableOpacity style={s.secondaryBtn} onPress={() => router.push('/ChefOrdersScreen')} activeOpacity={0.85}>
             <Text style={s.secondaryBtnText}>View My Bookings</Text>
           </TouchableOpacity>
         )}
         {userType === 'chef' && (
-          <TouchableOpacity style={s.secondaryBtn} onPress={() => {}} activeOpacity={0.85}>
+          <TouchableOpacity style={s.secondaryBtn} onPress={() => router.push('/ChefOrdersScreen')} activeOpacity={0.85}>
             <Text style={s.secondaryBtnText}>View My Orders</Text>
           </TouchableOpacity>
         )}
@@ -486,7 +551,7 @@ const s = StyleSheet.create({
     fontSize: 11, fontWeight: '600', color: TEXT_SOFT, textAlign: 'right',
   },
   footer: {
-    backgroundColor: '#fefce8', padding: 12,
+    backgroundColor: BG, padding: 12,
     borderTopWidth: 1, borderTopColor: BORDER, gap: 8,
   },
   primaryBtn: {
@@ -497,7 +562,7 @@ const s = StyleSheet.create({
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   secondaryBtn: {
     paddingVertical: 13, borderRadius: 12, alignItems: 'center',
-    borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff',
+    borderWidth: 1.5, borderColor: BORDER, backgroundColor: BG,
   },
   secondaryBtnText: { color: TEXT_MID, fontSize: 15, fontWeight: '600' },
   modalOverlay: {
