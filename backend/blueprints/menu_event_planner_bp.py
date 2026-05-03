@@ -122,30 +122,41 @@ def create_plan(current_user_id, user_type):
 @menu_event_planner_bp.route("/chat", methods=["POST"])
 @token_required
 def chat(current_user_id, user_type):
-    """Multi-turn: pass conversation_id + new message; returns assistant turn."""
+    """
+    Conversational entry point.
+    - First turn: client sends conversation_id=null → backend bootstraps a new one.
+    - Follow-ups: client echoes back the conversation_id from the previous response.
+    Response shape matches the frontend chat UI: { conversation_id, role, content, plan }.
+    """
     data = request.get_json(silent=True) or {}
 
-    conversation_id = data.get("conversation_id")
-    message = data.get("message", "").strip()
+    conversation_id = data.get("conversation_id")  # may be None → bootstrap
+    message = (data.get("message") or "").strip()
 
-    if not conversation_id:
-        return jsonify({"error": "conversation_id is required"}), 400
     if not message:
         return jsonify({"error": "message is required"}), 400
 
+    # Optional client-supplied location; service falls back to customer's default address.
+    def _to_float(v):
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
     try:
-        result = planner.continue_conversation(
+        result = planner.chat_turn(
             customer_id=current_user_id,
             conversation_id=conversation_id,
             user_message=message,
-            latitude=float(data.get("latitude", 0)),
-            longitude=float(data.get("longitude", 0)),
+            latitude=_to_float(data.get("latitude")),
+            longitude=_to_float(data.get("longitude")),
         )
-        return jsonify({"success": True, **result}), 200
+        return jsonify(result), 200
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         print(f"[menu_event_planner] chat error: {e}")
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 
