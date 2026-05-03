@@ -106,7 +106,7 @@ export default function LocationInput({ formData, setFormData }) {
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
-                Alert.alert('Permission Denied', 'Location access is required to use GPS.');
+                // Don't alert — user will enter manually
                 return;
             }
 
@@ -127,8 +127,49 @@ export default function LocationInput({ formData, setFormData }) {
             setSelection({ start: 0, end: 0 });
             setIsEditing(false);
         } catch (err) {
-            console.error('GPS Error:', err);
-            Alert.alert('GPS Error', 'Failed to retrieve your current location.');
+            // Silently handle location unavailable — user can enter address manually
+            console.warn('GPS unavailable:', err?.message || err);
+            // Only show alert if user explicitly tapped the GPS button (not on auto-load)
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const getCurrentLocationManual = async () => {
+        setLoading(true);
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Denied', 'Location permission is required to use GPS. Please enter your address manually.');
+                return;
+            }
+
+            const location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+                timeout: 10000,
+                maximumAge: 10000,
+            });
+            const { latitude, longitude } = location.coords;
+
+            const reverseGeo = await Location.reverseGeocodeAsync({ latitude, longitude });
+            const primaryAddress = reverseGeo[0];
+            const { displayLine, postalCode, fullAddress } = buildDisplayFromPlacemark(primaryAddress);
+
+            setAddressInput(fullAddress);
+            mergeLocation(latitude, longitude, { fullAddress, displayLine, postalCode });
+            await updateSavedLocation(fullAddress);
+            setSelection({ start: 0, end: 0 });
+            setIsEditing(false);
+        } catch (err) {
+            console.warn('GPS Error:', err?.message || err);
+            if (err?.message?.includes('unavailable') || err?.code === 'E_LOCATION_UNAVAILABLE') {
+                Alert.alert(
+                    'GPS Unavailable',
+                    'Location services are off or unavailable. Please enter your address manually.',
+                );
+            } else {
+                Alert.alert('Location Error', 'Could not get your location. Please enter your address manually.');
+            }
         } finally {
             setLoading(false);
         }
@@ -186,7 +227,7 @@ export default function LocationInput({ formData, setFormData }) {
         return (
             <View className={`flex-row items-center ${rowClass} gap-2`}>
                 <TouchableOpacity
-                    onPress={getCurrentLocation}
+                    onPress={getCurrentLocationManual}
                     disabled={loading}
                     accessibilityLabel="Use current location"
                     className="h-10 w-10 items-center justify-center"
