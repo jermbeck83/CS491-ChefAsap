@@ -104,7 +104,7 @@ export default function ChefProfileScreen() {
                     console.log('Analytics firing with profileId:', profileId, 'userId:', userId);
                     logAppEvent({
                         token,
-                        eventCategory: 'engagement',
+                        eventCategory: 'navigation',
                         eventAction: 'view_chef_profile',
                         actorId: profileId || userId,
                         eventData: {
