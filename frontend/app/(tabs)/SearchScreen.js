@@ -54,7 +54,7 @@ export default function SearchScreen() {
     });
 
     const { apiUrl } = getEnvVars();
-    const { token, userId, profileId } = useAuth();
+    const { token, userId, profileId, userType, sessionId } = useAuth();
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -111,7 +111,9 @@ export default function SearchScreen() {
                 token,
                 eventCategory: 'interaction',
                 eventAction: 'search_zip_code',
+                actorType: userType,
                 actorId: profileId || userId,
+                sessionId: sessionId,
                 eventData: {
                     zip_code: formData.locationPostalCode,
                     radius: formData.radius,
