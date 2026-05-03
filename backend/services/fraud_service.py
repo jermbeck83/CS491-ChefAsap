@@ -3,7 +3,7 @@ from database.db_helper import get_db_connection, get_cursor
 
 class FraudDetectionEngine:
     def __init__(self):
-        #  Heuristic weights 
+        # Heuristic weights 
         self.risk_weights = {
             "new_account": 25,              # Account created < 24 hours ago
             "high_value_transaction": 20,   # Order > $500
@@ -24,22 +24,31 @@ class FraudDetectionEngine:
             conn = get_db_connection()
             cursor = get_cursor(conn, dictionary=True)
             
-           
-            cursor.execute("SELECT created_at FROM users WHERE id = %s", (customer_id,))
-            user = cursor.fetchone()
+            print(f"\n--- 🕵️ FRAUD ENGINE RUNNING FOR ID: {customer_id} ---")
             
-            if user and user.get('created_at'):
-                # Handle naive datetime from DB by making it aware if needed
-                created_at = user['created_at']
+            #  NEW ACCOUNT CHECK (FIXED: Querying the 'customers' table directly)
+            cursor.execute("SELECT created_at FROM customers WHERE id = %s", (customer_id,))
+            customer = cursor.fetchone()
+            
+            if customer and customer.get('created_at'):
+                created_at = customer['created_at']
+                
+                # Make timezone-aware to prevent calculation bugs
                 if created_at.tzinfo is None:
                     created_at = created_at.replace(tzinfo=timezone.utc)
                     
                 account_age_hours = (datetime.now(timezone.utc) - created_at).total_seconds() / 3600
-                if account_age_hours < 24:
+                print(f"⏱️ Account Age: {account_age_hours:.2f} hours")
+                
+                # Use abs() to prevent timezone offset bugs resulting in negative hours
+                if abs(account_age_hours) < 24:
+                    print("🚩 FLAG TRIGGERED: New Account (+25 pts)")
                     risk_score += self.risk_weights["new_account"]
                     flags_triggered["new_account"] = True
+            else:
+                print("⚠️ WARNING: Could not find customer in database.")
 
-            # 2. Check Transaction Velocity (Sudden spam of bookings)
+            # VELOCITY CHECK
             cursor.execute("""
                 SELECT COUNT(*) as recent_bookings 
                 FROM bookings 
@@ -48,17 +57,22 @@ class FraudDetectionEngine:
             velocity = cursor.fetchone()
             
             if velocity and velocity['recent_bookings'] >= 2:
+                print(f"🚩 FLAG TRIGGERED: Velocity Spike ({velocity['recent_bookings']} bookings) (+30 pts)")
                 risk_score += self.risk_weights["velocity_spike"]
                 flags_triggered["velocity_spike"] = velocity['recent_bookings']
 
-            # 3. High Value Check
+            # HIGH VALUE CHECK
             amount_dollars = amount_cents / 100.0
             if amount_dollars > 500.00:
+                print(f"🚩 FLAG TRIGGERED: High Value (${amount_dollars:.2f}) (+20 pts)")
                 risk_score += self.risk_weights["high_value_transaction"]
                 flags_triggered["high_value"] = amount_dollars
 
             # Cap the score at 100
             final_score = min(risk_score, 100.0)
+            
+            print(f"🛡️ FINAL RISK SCORE: {final_score}/100")
+            print("--------------------------------------------------\n")
             
             return {
                 "fraud_score": final_score,
