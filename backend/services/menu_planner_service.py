@@ -502,25 +502,42 @@ def chat_turn(
             longitude = longitude if longitude is not None else db_lon
 
         # Fetch nearby chefs without a cuisine filter — the LLM picks fits from
-        # the candidate set based on the user's free-text request.
+        # the candidate set based on the user's free-text request. Cap at 8 to
+        # keep the LLM input small enough to fit under the gunicorn 30s timeout.
         if latitude is not None and longitude is not None:
-            chefs = _fetch_candidate_chefs(conn, latitude, longitude, cuisine="")
+            chefs = _fetch_candidate_chefs(conn, latitude, longitude, cuisine="", limit=8)
         else:
             chefs = []
         pricing_ctx = _build_pricing_context(chefs, "", "", 1)
 
         history = [] if is_new else _load_messages(conn, conversation_id)
 
+        # Trim the chef payload sent to the LLM: it only needs enough to pick
+        # 3–5 fits. Keeping the full record server-side for UI enrichment.
+        chefs_for_llm = [
+            {
+                "chef_id": c["chef_id"],
+                "full_name": c.get("full_name"),
+                "cuisines": c.get("cuisines"),
+                "average_rating": c.get("average_rating"),
+                "base_rate_per_person": c.get("base_rate_per_person"),
+                "distance_miles": c.get("distance_miles"),
+            }
+            for c in chefs
+        ]
+
         # Attach grounding context to the latest user turn only — keeps history
         # compact and lets the cached system prompt do the schema work.
         augmented_user = (
             f"<user_message>\n{user_message}\n</user_message>\n\n"
-            f"<available_chefs>\n{json.dumps(chefs, indent=2, default=str)}\n</available_chefs>\n\n"
-            f"<pricing_context>\n{json.dumps(pricing_ctx, indent=2, default=str)}\n</pricing_context>"
+            f"<available_chefs>\n{json.dumps(chefs_for_llm, default=str)}\n</available_chefs>\n\n"
+            f"<pricing_context>\n{json.dumps(pricing_ctx, default=str)}\n</pricing_context>"
         )
         messages = history + [{"role": "user", "content": augmented_user}]
 
-        plan, usage = call_llm(messages, model=DEFAULT_MODEL if is_new else FAST_MODEL)
+        # Always use the fast model for chat — Sonnet on a fresh full plan was
+        # consistently exceeding the 30s gunicorn worker timeout.
+        plan, usage = call_llm(messages, model=FAST_MODEL)
 
         if isinstance(plan, dict) and not plan.get("_parse_error"):
             plan = _rerank_with_ml(plan, latitude or 0.0, longitude or 0.0)
