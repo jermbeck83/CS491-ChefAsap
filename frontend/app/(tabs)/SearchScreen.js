@@ -109,7 +109,7 @@ export default function SearchScreen() {
         if (formData.locationPostalCode) {
             logAppEvent({
                 token,
-                eventCategory: 'search',
+                eventCategory: 'interaction',
                 eventAction: 'search_zip_code',
                 actorId: profileId || userId,
                 eventData: {
