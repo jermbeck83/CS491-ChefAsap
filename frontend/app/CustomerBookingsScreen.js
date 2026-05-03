@@ -24,13 +24,29 @@ const STATUS_COLORS = {
     cancelled: { bg: '#fee2e2', text: '#991b1b' },
 };
 
+const STATUS_LABELS = {
+    pending: 'Pending',
+    accepted: 'Accepted',
+    declined: 'Declined',
+    completed: 'Completed',
+    cancelled: 'Cancelled',
+};
+
 const STATUS_BUTTONS = [
-    { label: 'All', value: 'all' },
-    { label: 'Pending', value: 'pending' },
-    { label: 'Accepted', value: 'accepted' },
+    { label: 'All',       value: 'all' },
+    { label: 'Pending',   value: 'pending' },
+    { label: 'Accepted',  value: 'accepted' },
     { label: 'Completed', value: 'completed' },
-    { label: 'Declined', value: 'declined' },
+    { label: 'Declined',  value: 'declined' },
 ];
+
+// Normalize status to lowercase and map synonyms
+const normalizeStatus = (raw) => {
+    const s = String(raw || '').toLowerCase().trim();
+    if (s === 'confirmed' || s === 'confirm') return 'accepted';
+    if (s === 'rejected' || s === 'deny' || s === 'denied') return 'declined';
+    return s;
+};
 
 export default function CustomerBookingsScreen() {
     const { token, profileId, userType } = useAuth();
@@ -57,12 +73,26 @@ export default function CustomerBookingsScreen() {
             });
             const data = await response.json();
             if (response.ok) {
-                const allBookings = [
+                const raw = [
                     ...(data.data?.upcoming_bookings || []),
                     ...(data.data?.todays_bookings || []),
                     ...(data.data?.previous_bookings || []),
                 ];
-                setBookings(allBookings);
+                // Normalize status on every booking so filtering is reliable
+                const normalized = raw.map(b => ({
+                    ...b,
+                    status: normalizeStatus(b.status),
+                }));
+                // Deduplicate by booking_id (dashboard buckets can overlap)
+                const seen = new Set();
+                const deduped = normalized.filter(b => {
+                    if (seen.has(b.booking_id)) return false;
+                    seen.add(b.booking_id);
+                    return true;
+                });
+                // Sort newest booking date first
+                deduped.sort((a, b) => new Date(b.booking_date) - new Date(a.booking_date));
+                setBookings(deduped);
             } else {
                 Alert.alert('Error', data.error || 'Failed to load bookings');
             }
@@ -75,7 +105,11 @@ export default function CustomerBookingsScreen() {
     };
 
     useEffect(() => {
-        if (userType !== 'customer') { Alert.alert('Access Denied', 'Only customers can view this page'); router.back(); return; }
+        if (userType !== 'customer') {
+            Alert.alert('Access Denied', 'Only customers can view this page');
+            router.back();
+            return;
+        }
         fetchBookings();
     }, []);
 
@@ -95,16 +129,31 @@ export default function CustomerBookingsScreen() {
                 body: JSON.stringify({ customer_id: profileId, rating, review: reviewText, booking_id: reviewModal.booking.booking_id }),
             });
             const data = await response.json();
-            if (response.ok) { Alert.alert('Success', 'Thank you for your review!'); closeReviewModal(); fetchBookings(); }
-            else Alert.alert('Error', data.error || 'Failed to submit review');
+            if (response.ok) {
+                Alert.alert('Success', 'Thank you for your review!');
+                closeReviewModal();
+                fetchBookings();
+            } else {
+                Alert.alert('Error', data.error || 'Failed to submit review');
+            }
         } catch (error) {
             Alert.alert('Error', 'Network error. Could not submit review.');
-        } finally { setSubmittingReview(false); }
+        } finally {
+            setSubmittingReview(false);
+        }
     };
 
     const filteredBookings = selectedStatus === 'all'
         ? bookings
         : bookings.filter(b => b.status === selectedStatus);
+
+    // Count per tab for badge display
+    const counts = STATUS_BUTTONS.reduce((acc, btn) => {
+        acc[btn.value] = btn.value === 'all'
+            ? bookings.length
+            : bookings.filter(b => b.status === btn.value).length;
+        return acc;
+    }, {});
 
     if (loading && !refreshing) {
         return (
@@ -136,42 +185,62 @@ export default function CustomerBookingsScreen() {
                     </TouchableOpacity>
                 </View>
 
-                {/* Status Filter */}
+                {/* Status Filter with counts */}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
-                    {STATUS_BUTTONS.map(btn => (
-                        <TouchableOpacity
-                            key={btn.value}
-                            onPress={() => setSelectedStatus(btn.value)}
-                            style={[s.filterPill, selectedStatus === btn.value && s.filterPillActive]}
-                        >
-                            <Text style={[s.filterPillText, selectedStatus === btn.value && s.filterPillTextActive]}>
-                                {btn.label}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
+                    {STATUS_BUTTONS.map(btn => {
+                        const count = counts[btn.value] || 0;
+                        const isActive = selectedStatus === btn.value;
+                        return (
+                            <TouchableOpacity
+                                key={btn.value}
+                                onPress={() => setSelectedStatus(btn.value)}
+                                style={[s.filterPill, isActive && s.filterPillActive]}
+                            >
+                                <Text style={[s.filterPillText, isActive && s.filterPillTextActive]}>
+                                    {btn.label}
+                                </Text>
+                                {count > 0 && (
+                                    <View style={[s.filterCount, isActive && s.filterCountActive]}>
+                                        <Text style={[s.filterCountText, isActive && s.filterCountTextActive]}>
+                                            {count}
+                                        </Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
                 </ScrollView>
 
                 {/* Bookings */}
                 {filteredBookings.length === 0 ? (
                     <View style={s.emptyCard}>
                         <Octicons name="calendar" size={40} color={GREEN_LIGHT} />
-                        <Text style={s.emptyText}>No bookings found. Start by searching for a chef!</Text>
+                        <Text style={s.emptyTitle}>No {selectedStatus === 'all' ? '' : selectedStatus} bookings</Text>
+                        <Text style={s.emptyText}>
+                            {selectedStatus === 'all'
+                                ? 'Start by searching for a chef!'
+                                : `You have no ${selectedStatus} bookings yet.`}
+                        </Text>
                     </View>
                 ) : (
                     filteredBookings.map((booking) => {
-                        const bookingDate = new Date(booking.booking_date);
-                        const formattedDate = bookingDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                         const statusStyle = STATUS_COLORS[booking.status] || STATUS_COLORS.pending;
+                        const statusLabel = STATUS_LABELS[booking.status] || booking.status;
 
                         return (
                             <View key={booking.booking_id} style={s.bookingCard}>
-                                {/* Header */}
+                                {/* Card Header */}
                                 <View style={s.bookingHeader}>
                                     <Text style={s.bookingTitle} numberOfLines={1}>
-                                        {booking.chef_name ? `Chef ${booking.chef_name}` : `Booking #${booking.booking_id}`} — {formattedDate}
+                                        {booking.chef_name
+                                            ? `${booking.chef_name}`
+                                            : `Booking #${booking.booking_id}`}
+                                        {' — '}{booking.booking_date
+                                            ? new Date(booking.booking_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                            : ''}
                                     </Text>
                                     <View style={[s.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                                        <Text style={[s.statusText, { color: statusStyle.text }]}>{booking.status}</Text>
+                                        <Text style={[s.statusText, { color: statusStyle.text }]}>{statusLabel}</Text>
                                     </View>
                                 </View>
 
@@ -185,18 +254,22 @@ export default function CustomerBookingsScreen() {
                                     {/* Guests & Cuisine */}
                                     <View style={s.infoRow}>
                                         <Octicons name="people" size={14} color={TEXT_SOFT} />
-                                        <Text style={s.infoText}>{booking.number_of_people} guests · {booking.cuisine_type} · {booking.meal_type}</Text>
+                                        <Text style={s.infoText}>
+                                            {booking.number_of_people} {booking.number_of_people === 1 ? 'guest' : 'guests'} · {booking.cuisine_type} · {booking.meal_type}
+                                        </Text>
                                     </View>
 
                                     {/* Total */}
-                                    {booking.total_cost && (
+                                    {booking.total_cost != null && (
                                         <View style={s.infoRow}>
                                             <Octicons name="credit-card" size={14} color={TEXT_SOFT} />
-                                            <Text style={[s.infoText, { fontWeight: '700', color: GREEN }]}>${booking.total_cost.toFixed(2)}</Text>
+                                            <Text style={[s.infoText, { fontWeight: '700', color: GREEN }]}>
+                                                ${Number(booking.total_cost).toFixed(2)}
+                                            </Text>
                                         </View>
                                     )}
 
-                                    {/* Pick Up Address */}
+                                    {/* Address */}
                                     {booking.chef_address_line1 && (
                                         <View style={s.infoRow}>
                                             <Octicons name="location" size={14} color={TEXT_SOFT} />
@@ -207,12 +280,12 @@ export default function CustomerBookingsScreen() {
                                     )}
 
                                     {/* Special Notes */}
-                                    {booking.special_notes && (
+                                    {booking.special_notes ? (
                                         <View style={s.notesBox}>
                                             <Text style={s.notesLabel}>Special Notes</Text>
                                             <Text style={s.notesText}>{booking.special_notes}</Text>
                                         </View>
-                                    )}
+                                    ) : null}
 
                                     {/* Status messages */}
                                     {booking.status === 'pending' && (
@@ -225,6 +298,18 @@ export default function CustomerBookingsScreen() {
                                         <View style={[s.statusMsg, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
                                             <Octicons name="check-circle" size={13} color="#166534" />
                                             <Text style={[s.statusMsgText, { color: '#166534' }]}>Booking confirmed!</Text>
+                                        </View>
+                                    )}
+                                    {booking.status === 'declined' && (
+                                        <View style={[s.statusMsg, { backgroundColor: '#fee2e2', borderColor: '#fecaca' }]}>
+                                            <Octicons name="x-circle" size={13} color="#991b1b" />
+                                            <Text style={[s.statusMsgText, { color: '#991b1b' }]}>This booking was declined by the chef.</Text>
+                                        </View>
+                                    )}
+                                    {booking.status === 'cancelled' && (
+                                        <View style={[s.statusMsg, { backgroundColor: '#fee2e2', borderColor: '#fecaca' }]}>
+                                            <Octicons name="x-circle" size={13} color="#991b1b" />
+                                            <Text style={[s.statusMsgText, { color: '#991b1b' }]}>This booking was cancelled.</Text>
                                         </View>
                                     )}
 
@@ -268,7 +353,11 @@ export default function CustomerBookingsScreen() {
                                     </TouchableOpacity>
                                 ))}
                             </View>
-                            {rating > 0 && <Text style={{ color: GREEN, fontWeight: '600', marginTop: 6 }}>{rating} {rating === 1 ? 'star' : 'stars'}</Text>}
+                            {rating > 0 && (
+                                <Text style={{ color: GREEN, fontWeight: '600', marginTop: 6 }}>
+                                    {rating} {rating === 1 ? 'star' : 'stars'}
+                                </Text>
+                            )}
                         </View>
 
                         {/* Review text */}
@@ -282,7 +371,9 @@ export default function CustomerBookingsScreen() {
                             multiline
                             maxLength={500}
                         />
-                        <Text style={{ fontSize: 12, color: TEXT_SOFT, textAlign: 'right', marginBottom: 16 }}>{reviewText.length}/500</Text>
+                        <Text style={{ fontSize: 12, color: TEXT_SOFT, textAlign: 'right', marginBottom: 16 }}>
+                            {reviewText.length}/500
+                        </Text>
 
                         {/* Actions */}
                         <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -291,7 +382,9 @@ export default function CustomerBookingsScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={[s.primaryBtn, { flex: 1 }, submittingReview && { backgroundColor: '#c8ddd0' }]}
-                                onPress={submitReview} disabled={submittingReview} activeOpacity={0.85}
+                                onPress={submitReview}
+                                disabled={submittingReview}
+                                activeOpacity={0.85}
                             >
                                 <Text style={s.primaryBtnText}>{submittingReview ? 'Submitting...' : 'Submit Review'}</Text>
                             </TouchableOpacity>
@@ -308,12 +401,29 @@ const s = StyleSheet.create({
     backBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' },
     pageTitle: { fontSize: 24, fontWeight: '800', color: TEXT, letterSpacing: -0.5 },
     refreshBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: GREEN_LIGHT, alignItems: 'center', justifyContent: 'center' },
-    filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff' },
+
+    // Filter pills with count badge
+    filterPill: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: 14, paddingVertical: 8,
+        borderRadius: 20, borderWidth: 1.5, borderColor: BORDER, backgroundColor: '#fff',
+    },
     filterPillActive: { backgroundColor: GREEN, borderColor: GREEN },
     filterPillText: { fontSize: 13, fontWeight: '600', color: TEXT_MID },
     filterPillTextActive: { color: '#fff' },
-    emptyCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 40, alignItems: 'center' },
-    emptyText: { fontSize: 14, color: TEXT_SOFT, marginTop: 12, textAlign: 'center' },
+    filterCount: {
+        minWidth: 20, height: 20, borderRadius: 10,
+        backgroundColor: '#e2ece2', alignItems: 'center', justifyContent: 'center',
+        paddingHorizontal: 4,
+    },
+    filterCountActive: { backgroundColor: 'rgba(255,255,255,0.25)' },
+    filterCountText: { fontSize: 11, fontWeight: '700', color: TEXT_MID },
+    filterCountTextActive: { color: '#fff' },
+
+    emptyCard: { backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 40, alignItems: 'center', gap: 8 },
+    emptyTitle: { fontSize: 16, fontWeight: '700', color: TEXT, marginTop: 4 },
+    emptyText: { fontSize: 14, color: TEXT_SOFT, textAlign: 'center' },
+
     bookingCard: {
         backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: BORDER,
         marginBottom: 14, overflow: 'hidden',
@@ -326,16 +436,17 @@ const s = StyleSheet.create({
     bookingTitle: { fontSize: 14, fontWeight: '700', color: TEXT, flex: 1, marginRight: 10 },
     statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
     statusText: { fontSize: 12, fontWeight: '700', textTransform: 'capitalize' },
-    bookingBody: { padding: 14 },
-    infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    bookingBody: { padding: 14, gap: 2 },
+    infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
     infoText: { fontSize: 13, color: TEXT_MID, flex: 1 },
-    notesBox: { backgroundColor: '#fffbeb', borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', padding: 10, marginTop: 4, marginBottom: 8 },
+    notesBox: { backgroundColor: '#fffbeb', borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', padding: 10, marginTop: 4, marginBottom: 6 },
     notesLabel: { fontSize: 11, fontWeight: '700', color: '#92400e', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4 },
     notesText: { fontSize: 13, color: '#78350f' },
-    statusMsg: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fef9c3', borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', padding: 10, marginTop: 4 },
-    statusMsgText: { fontSize: 13, fontWeight: '600' },
+    statusMsg: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fef9c3', borderRadius: 10, borderWidth: 1, borderColor: '#fde68a', padding: 10, marginTop: 6 },
+    statusMsgText: { fontSize: 13, fontWeight: '600', flex: 1 },
     reviewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: GREEN_LIGHT, borderWidth: 1.5, borderColor: GREEN, borderRadius: 12, paddingVertical: 11, marginTop: 10 },
     reviewBtnText: { fontSize: 14, fontWeight: '700', color: GREEN },
+
     modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
     modalCard: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36 },
     modalHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#dde8dd', alignSelf: 'center', marginBottom: 16 },

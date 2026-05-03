@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { ScrollView, Text, View, TouchableOpacity, RefreshControl, Alert } from "react-native";
-import { Link } from 'expo-router';
+import { ScrollView, Text, View, TouchableOpacity, RefreshControl, Alert, StyleSheet } from "react-native";
+import { Link, useRouter } from 'expo-router';
 import getEnvVars from "../../config";
 import { useAuth } from "../context/AuthContext";
+import Octicons from '@expo/vector-icons/Octicons';
 
 import Card from "../components/Card";
 import Button from '../components/Button';
@@ -13,28 +14,41 @@ import ProfilePicture from '../components/ProfilePicture';
 import RatingsDisplay from '../components/RatingsDisplay';
 import { logAppEvent } from '../../utils/analytics';
 
-const tempChefCard = (
-    <View className="flex bg-primary-100 shadow-sm shadow-primary-300 mr-4 rounded-xl border-2 border-primary-400 dark:bg-dark-100 dark:shadow-dark-300 dark:border-dark-400">
-        <View className="w-full p-2">
-            <ProfilePicture size={24} firstName='John' lastName='Doe' />
-        </View>
-        <View className="flex-row bg-primary-300 rounded-b-lg w-full p-2 pb-0 items-center dark:bg-dark-300">
-            <View>
-                <Text className="text-sm text-primary-100 text-center dark:text-dark-100">Jane Doe</Text>
-                <Text className="text-sm text-primary-100 text-center dark:text-dark-100">Italian</Text>
+function PlannerBanner({ onPress }) {
+    return (
+        <TouchableOpacity style={banner.card} onPress={onPress} activeOpacity={0.85}>
+            <View style={banner.iconWrap}>
+                <Octicons name="sparkle-fill" size={22} color="#2d6a4f" />
             </View>
-            <Button
-                icon="link-external"
-                style="primary"
-                base="link"
-                customClasses='ml-3 p-0'
-                href={'/ChefProfileScreen/1'}
-            />
-        </View>
-    </View>
-);
+            <View style={{ flex: 1 }}>
+                <Text style={banner.title}>Plan an event with AI</Text>
+                <Text style={banner.sub}>Get a full menu, ingredients & chef match in seconds</Text>
+            </View>
+            <Octicons name="arrow-right" size={18} color="#2d6a4f" />
+        </TouchableOpacity>
+    );
+}
+
+const banner = StyleSheet.create({
+    card: {
+        flexDirection: 'row', alignItems: 'center', gap: 12,
+        backgroundColor: '#fff',
+        borderRadius: 16, borderWidth: 1.5, borderColor: '#d8f3dc',
+        padding: 14, marginBottom: 16,
+        shadowColor: '#2d6a4f', shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
+    },
+    iconWrap: {
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: '#d8f3dc', alignItems: 'center', justifyContent: 'center',
+    },
+    title: { fontSize: 14, fontWeight: '800', color: '#1a2e1a', marginBottom: 2 },
+    sub: { fontSize: 12, color: '#8aab8a', lineHeight: 16 },
+});
 
 export default function SearchScreen() {
+    const router = useRouter();
+
     const [formData, setFormData] = useState({
         searchQuery: '',
         searchType: 'chef',
@@ -68,13 +82,11 @@ export default function SearchScreen() {
     const [loadingRecent, setLoadingRecent] = useState(false);
     const [refreshing, setRefreshing] = useState(null);
 
-    // Refs to prevent duplicate alerts and infinite auto-load loops
     const errorAlertShownRef = useRef(false);
     const autoLoadDoneRef = useRef(false);
 
     const onRefresh = () => {
         setRefreshing(true);
-        // Reset refs so a manual refresh can show errors again if needed
         errorAlertShownRef.current = false;
         autoLoadDoneRef.current = false;
         fetchRecentSearches();
@@ -87,7 +99,6 @@ export default function SearchScreen() {
         if (refreshing) setRefreshing(loading || loadingFaves || loadingRecent);
     }, [loading, loadingFaves, loadingRecent]);
 
-    // Auto-load nearby chefs when location is available — only fires once
     useEffect(() => {
         if (formData.latitude && formData.longitude && token && !autoLoadDoneRef.current) {
             autoLoadDoneRef.current = true;
@@ -96,7 +107,6 @@ export default function SearchScreen() {
         }
     }, [formData.latitude, formData.longitude, token]);
 
-    // Fetch recent searches when component loads
     useEffect(() => {
         if (token && profileId) {
             fetchRecentSearches();
@@ -121,56 +131,36 @@ export default function SearchScreen() {
                 },
             });
         }
-        // Manual search always resets the error ref so user can see new errors
         errorAlertShownRef.current = false;
         fetchSearchResults();
     };
 
-    // Fetch recent searches for the customer (search keywords)
     const fetchRecentSearches = async () => {
         if (!profileId) return;
-
         try {
             const url = `${apiUrl}/search/recent/${profileId}?limit=5`;
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             });
-
             const data = await response.json();
-
-            if (response.ok && data.success) {
-                setRecentSearches(data.recent_searches || []);
-            }
+            if (response.ok && data.success) setRecentSearches(data.recent_searches || []);
         } catch (err) {
             console.error('Failed to fetch recent searches:', err);
         }
     };
 
-    // Fetch recently viewed chefs
     const fetchRecentChefs = async () => {
         if (!profileId) return;
-
         try {
             setLoadingRecent(true);
             const url = `${apiUrl}/search/viewed-chefs/${profileId}?limit=5`;
-
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             });
-
             const data = await response.json();
-
-            if (response.ok && data.success) {
-                setRecentChefs(data.viewed_chefs || []);
-            }
+            if (response.ok && data.success) setRecentChefs(data.viewed_chefs || []);
         } catch (err) {
             console.error('[SearchScreen] Failed to fetch recent chefs:', err);
         } finally {
@@ -180,24 +170,15 @@ export default function SearchScreen() {
 
     const fetchFavoriteChefs = async () => {
         if (!profileId) return;
-
         try {
             setLoadingFaves(true);
             const url = `${apiUrl}/booking/customer/${profileId}/favorite-chefs`;
-
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             });
-
             const data = await response.json();
-
-            if (response.ok && data.success) {
-                setFavoriteChefs(data.favorite_chefs || []);
-            }
+            if (response.ok && data.success) setFavoriteChefs(data.favorite_chefs || []);
         } catch (err) {
             console.error('[SearchScreen] Failed to fetch favorite chefs:', err);
         } finally {
@@ -208,24 +189,13 @@ export default function SearchScreen() {
     const fetchSearchResults = async () => {
         setLoading(true);
         setError(null);
-
         try {
             const searchParams = new URLSearchParams();
-
-            const apiParams = [
-                'latitude', 'longitude', 'radius', 'min_rating', 'gender',
-                'max_price', 'sort_by', 'limit', 'offset'
-            ];
-
-            const otherFutureParams = [
-                'searchQuery', 'searchType', 'gender', 'timing', 'cuisine'
-            ];
-
+            const apiParams = ['latitude', 'longitude', 'radius', 'min_rating', 'gender', 'max_price', 'sort_by', 'limit', 'offset'];
+            const otherFutureParams = ['searchQuery', 'searchType', 'gender', 'timing', 'cuisine'];
             const allRelevantParams = [...apiParams, ...otherFutureParams];
 
-            if (profileId) {
-                searchParams.append('customer_id', profileId);
-            }
+            if (profileId) searchParams.append('customer_id', profileId);
 
             for (const key of allRelevantParams) {
                 const value = formData[key];
@@ -236,28 +206,19 @@ export default function SearchScreen() {
 
             if (!formData.latitude || !formData.longitude) {
                 setError('Location is required for search. Please enable GPS or enter an address manually.');
-                // Only show alert once
                 if (!errorAlertShownRef.current) {
                     errorAlertShownRef.current = true;
-                    Alert.alert(
-                        'Location Required',
-                        'Please enable GPS or enter an address manually to search for nearby chefs.'
-                    );
+                    Alert.alert('Location Required', 'Please enable GPS or enter an address manually to search for nearby chefs.');
                 }
                 setLoading(false);
                 return;
             }
 
             const url = `${apiUrl}/search/chefs/nearby?${searchParams.toString()}`;
-
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
             });
-
             const data = await response.json();
 
             if (response.ok) {
@@ -274,23 +235,18 @@ export default function SearchScreen() {
                 }));
                 setSearchResults(transformedResults);
                 setError(null);
-                // Reset error ref on success so future errors can show
                 errorAlertShownRef.current = false;
-
                 fetchRecentSearches();
                 setRefreshKey(prev => prev + 1);
             } else {
                 setError(data.error || 'Failed to load results.');
-                // Only show alert once
                 if (!errorAlertShownRef.current) {
                     errorAlertShownRef.current = true;
                     Alert.alert('Error', data.error || 'Failed to load results.');
                 }
             }
-
         } catch (err) {
             setError(err.message || 'Network error. Could not connect to API.');
-            // Only show alert once
             if (!errorAlertShownRef.current) {
                 errorAlertShownRef.current = true;
                 Alert.alert('Error', err.message || 'Network error. Could not connect to API.');
@@ -301,7 +257,6 @@ export default function SearchScreen() {
         }
     };
 
-    // Render recently viewed chef card
     const renderSmallCard = (chef) => (
         <Link key={chef.chef_id} href={`/ChefProfileScreen/${chef.chef_id}`} asChild>
             <TouchableOpacity style={{
@@ -326,7 +281,6 @@ export default function SearchScreen() {
         </Link>
     );
 
-    // Re-run a recent search
     const handleRecentSearchClick = (search) => {
         setFormData({
             ...formData,
@@ -348,9 +302,7 @@ export default function SearchScreen() {
     return (
         <ScrollView
             style={{ flex: 1, backgroundColor: '#fefce8', padding: 20 }}
-            refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
             <SearchBarComponent
                 key={refreshKey}
@@ -365,7 +317,7 @@ export default function SearchScreen() {
                 isScrollable={true}
                 scrollDirection="horizontal"
             >
-                {loadingFaves ? <LoadingIcon message='' size={64} icon='spinner'/> : favoriteChefs.length > 0 ? (
+                {loadingFaves ? <LoadingIcon message='' size={64} icon='spinner' /> : favoriteChefs.length > 0 ? (
                     favoriteChefs.map((chef) => renderSmallCard(chef))
                 ) : (
                     <View className="p-4">
@@ -382,7 +334,7 @@ export default function SearchScreen() {
                 isScrollable={true}
                 scrollDirection="horizontal"
             >
-                {loadingRecent ? <LoadingIcon message='' size={64} icon='spinner'/> : recentChefs.length > 0 ? (
+                {loadingRecent ? <LoadingIcon message='' size={64} icon='spinner' /> : recentChefs.length > 0 ? (
                     recentChefs.map((chef) => renderSmallCard(chef))
                 ) : (
                     <View className="p-4">
@@ -392,13 +344,17 @@ export default function SearchScreen() {
                     </View>
                 )}
             </Card>
+
+            {/* AI Event Planner banner */}
+            <PlannerBanner onPress={() => router.push('/MenuPlannerScreen')} />
+
             <Card
                 title="Nearby Chefs"
                 headerIcon="location"
                 isScrollable={true}
                 scrollDirection="vertical"
             >
-                {searchResults.length != 0 ? searchResults.map((result, index) =>
+                {searchResults.length !== 0 ? searchResults.map((result, index) =>
                     <SearchResultCard
                         key={index}
                         chef_id={result["chef_id"]}

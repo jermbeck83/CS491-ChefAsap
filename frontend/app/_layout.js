@@ -79,6 +79,10 @@ function RootStack() {
                     name="CustomerBookingsScreen"
                     options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true, contentStyle: { backgroundColor: CREAM } }}
                 />
+                <Stack.Screen
+                    name="MenuPlannerScreen"
+                    options={{ animation: 'default', gestureEnabled: true, fullScreenGestureEnabled: true, contentStyle: { backgroundColor: CREAM } }}
+                />
             </Stack>
         </SafeAreaView>
     );
