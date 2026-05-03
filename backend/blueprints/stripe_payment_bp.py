@@ -847,10 +847,11 @@ def create_payment_intent(current_user_id, user_type):
     currency = data.get('currency', 'usd')
     frontend_user_id = data.get('customer_id') 
     payment_method_id = data.get('payment_method_id')
+    event_zip = data.get('event_zip')
     
-    if not all([booking_id, frontend_user_id, payment_method_id]):
-        print(f"❌ REJECTED 400 (Missing Data): booking={booking_id}, customer={frontend_user_id}, payment={payment_method_id}")
-        return jsonify({'error': 'Booking ID, Customer ID, and Payment method ID are required'}), 400
+    if not all([booking_id, frontend_user_id, payment_method_id, event_zip]):
+        print(f"❌ REJECTED 400 (Missing Data): booking={booking_id}, customer={frontend_user_id}, payment={payment_method_id}, zip={event_zip}")
+        return jsonify({'error': 'Booking ID, Customer ID, Payment method ID, and Event Zip are required'}), 400
     
     conn = None
     cursor = None
@@ -888,7 +889,7 @@ def create_payment_intent(current_user_id, user_type):
         risk_assessment = fraud_engine.evaluate_transaction_risk(
             customer_id=real_customer_id, 
             amount_cents=amount_cents,
-            event_zip="00000" 
+            event_zip=event_zip 
         )
         
         cursor.execute('''

@@ -68,6 +68,26 @@ class FraudDetectionEngine:
                 risk_score += self.risk_weights["high_value_transaction"]
                 flags_triggered["high_value"] = amount_dollars
 
+            # 4. ZIP CODE MISMATCH CHECK
+            # Query the customer's default address from the database
+            cursor.execute("""
+                SELECT zip_code 
+                FROM customer_addresses 
+                WHERE customer_id = %s AND is_default = TRUE
+                LIMIT 1
+            """, (customer_id,))
+            address = cursor.fetchone()
+            
+            if address and address['zip_code'] and event_zip:
+                # Clean strings just in case of whitespace or formatting
+                registered_zip = str(address['zip_code']).strip()
+                passed_zip = str(event_zip).strip()
+                
+                if registered_zip != passed_zip:
+                    print(f"🚩 FLAG TRIGGERED: Zip Code Mismatch (Registered: {registered_zip}, Event: {passed_zip}) (+15 pts)")
+                    risk_score += self.risk_weights["zip_code_mismatch"]
+                    flags_triggered["zip_code_mismatch"] = {"registered": registered_zip, "event": passed_zip}
+
             # Cap the score at 100
             final_score = min(risk_score, 100.0)
             
