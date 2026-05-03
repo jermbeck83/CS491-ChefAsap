@@ -68,7 +68,7 @@ export default function SearchScreen() {
     });
 
     const { apiUrl } = getEnvVars();
-    const { token, userId, profileId, userType, sessionId } = useAuth();
+    const { token, userId, profileId } = useAuth();
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -121,9 +121,7 @@ export default function SearchScreen() {
                 token,
                 eventCategory: 'interaction',
                 eventAction: 'search_zip_code',
-                actorType: userType,
                 actorId: profileId || userId,
-                sessionId: sessionId,
                 eventData: {
                     zip_code: formData.locationPostalCode,
                     radius: formData.radius,
@@ -301,7 +299,8 @@ export default function SearchScreen() {
 
     return (
         <ScrollView
-            style={{ flex: 1, backgroundColor: '#fefce8', padding: 20 }}
+            style={{ flex: 1, backgroundColor: '#fefce8' }}
+            contentContainerStyle={{ padding: 20 }}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
             <SearchBarComponent

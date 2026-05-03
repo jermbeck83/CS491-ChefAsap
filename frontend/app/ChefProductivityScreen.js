@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { ScrollView, View, Text, TouchableOpacity, TextInput, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Octicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import getEnvVars from '../config';
 import { useAuth } from './context/AuthContext';
@@ -211,14 +210,12 @@ export default function ChefProductivityScreen() {
     const { bookingId, bookingDate, bookingTime, guestCount, customerName } = useLocalSearchParams();
     const { token, userType } = useAuth();
     const router = useRouter();
-    const insets = useSafeAreaInsets();
 
     const [tab, setTab] = useState('prep');
     const [data, setData] = useState({});
     const [loadingTab, setLoadingTab] = useState(null);
     const [hydrating, setHydrating] = useState(true);
 
-    // Hydrate from persisted sessions on mount
     useEffect(() => {
         const hydrate = async () => {
             if (!bookingId) return;
@@ -302,7 +299,8 @@ export default function ChefProductivityScreen() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: BG } }} />
-            <View style={[s.screen, { paddingTop: insets.top }]}>
+            {/* ✅ FIX: removed paddingTop: insets.top — _layout.js SafeAreaView handles it */}
+            <View style={s.screen}>
                 {/* Header */}
                 <View style={s.header}>
                     <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
@@ -387,9 +385,7 @@ const s = StyleSheet.create({
         borderWidth: 1, borderColor: BORDER, backgroundColor: '#fff',
     },
     regenBtnText: { fontSize: 13, fontWeight: '600', color: TEXT_MID },
-    skeletonLine: {
-        height: 14, borderRadius: 7, backgroundColor: '#e8f0e8',
-    },
+    skeletonLine: { height: 14, borderRadius: 7, backgroundColor: '#e8f0e8' },
     // Prep
     prepGroup: { marginBottom: 20 },
     prepWindow: {

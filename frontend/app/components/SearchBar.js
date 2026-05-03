@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import Octicons from '@expo/vector-icons/Octicons';
-import Input from './Input';
 import CustomPicker from './Picker';
-import Stepper from './Stepper';
 import LocationInput from './LocationInput';
 import getEnvVars from '../../config';
 import { useAuth } from '../context/AuthContext';
@@ -178,14 +176,14 @@ export default function SearchBarComponent({ formData, setFormData, handleSearch
             <View style={s.banner}>
                 {/* Search row */}
                 <View style={s.searchRow}>
-                    <Octicons name="search" size={18} color="#aab4a8" style={{ marginRight: 8 }} />
-                    <Input
+                    <Octicons name="search" size={18} color="#aab4a8" style={{ marginRight: 8, flexShrink: 0 }} />
+                    <TextInput
                         placeholder="Search by name, cuisine, or event type…"
+                        placeholderTextColor="#aab4a8"
                         value={formData.searchQuery}
                         onChangeText={(v) => setFormData(prev => ({ ...prev, searchQuery: v }))}
                         onFocus={() => setIsDropVisible(true)}
-                        containerClasses="flex-1 mb-0 min-w-0"
-                        embedded
+                        style={s.searchInput}
                     />
                     <TouchableOpacity
                         onPress={() => { handleSearch(); setIsDropVisible(false); }}
@@ -227,8 +225,16 @@ const s = StyleSheet.create({
         borderRadius: 14,
         borderWidth: 1.5,
         borderColor: '#dde8dd',
-        paddingHorizontal: 12,
+        paddingLeft: 12,
+        paddingRight: 10,
         minHeight: 48,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#1a2e1a',
+        paddingVertical: 10,
+        minWidth: 0,
     },
     searchBtn: {
         width: 36, height: 36,
@@ -236,6 +242,7 @@ const s = StyleSheet.create({
         backgroundColor: '#2d6a4f',
         alignItems: 'center', justifyContent: 'center',
         marginLeft: 8,
+        flexShrink: 0,
     },
     dropView: {
         backgroundColor: '#f8faf8',

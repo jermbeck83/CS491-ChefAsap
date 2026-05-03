@@ -20,7 +20,6 @@ import LoadingIcon from '../components/LoadingIcon';
 
 const FILTER_TABS = ['All', 'Unread', 'Chefs', 'Bookings'];
 
-/** Always cream on this tab — matches tab bar & Search (ignore app dark theme) */
 const CREAM_BG = '#fefce8';
 const CARD_BG = '#ffffff';
 const TEXT_PRIMARY = '#1a2e1a';
@@ -47,7 +46,6 @@ function getInitials(firstName, lastName) {
 }
 
 export default function Messages() {
-
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -69,7 +67,6 @@ export default function Messages() {
     const fetchConversations = async () => {
         try {
             const url = `${apiUrl}/api/chat/conversations?${userType}_id=${profileId}`;
-
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
@@ -77,22 +74,14 @@ export default function Messages() {
                     'Authorization': `Bearer ${token}`,
                 },
             });
-
-            if (!response.ok) {
-                throw new Error('Failed to fetch conversations.');
-            }
-
+            if (!response.ok) throw new Error('Failed to fetch conversations.');
             const data = await response.json();
-
             setConversations(data);
             setError(null);
-
-        }
-        catch (err) {
+        } catch (err) {
             console.error('Error fetching conversations: ', err);
             setError('Failed to load messages. Please try again.');
-        }
-        finally {
+        } finally {
             setLoading(false);
             setRefreshing(false);
         }
@@ -140,30 +129,20 @@ export default function Messages() {
     };
 
     const getOtherName = (item) => {
-        if (userType === 'chef') {
-            return `${item.customer_first_name} ${item.customer_last_name}`;
-        }
+        if (userType === 'chef') return `${item.customer_first_name} ${item.customer_last_name}`;
         return `${item.chef_first_name} ${item.chef_last_name}`;
     };
 
     const getPhotoFirstLast = (item) => {
-        if (userType === 'chef') {
-            return { first: item.customer_first_name, last: item.customer_last_name, url: item.photo_url };
-        }
+        if (userType === 'chef') return { first: item.customer_first_name, last: item.customer_last_name, url: item.photo_url };
         return { first: item.chef_first_name, last: item.chef_last_name, url: item.photo_url };
     };
 
     const filteredConversations = useMemo(() => {
         let list = conversations;
-
-        if (filter === 'Unread') {
-            list = list.filter((c) => c.unread_count > 0);
-        } else if (filter === 'Chefs') {
-            list = list.filter((c) => !c.booking_id);
-        } else if (filter === 'Bookings') {
-            list = list.filter((c) => !!c.booking_id);
-        }
-
+        if (filter === 'Unread') list = list.filter((c) => c.unread_count > 0);
+        else if (filter === 'Chefs') list = list.filter((c) => !c.booking_id);
+        else if (filter === 'Bookings') list = list.filter((c) => !!c.booking_id);
         const q = searchQuery.trim().toLowerCase();
         if (q) {
             list = list.filter((c) => {
@@ -172,16 +151,12 @@ export default function Messages() {
                 return name.includes(q) || preview.includes(q);
             });
         }
-
         return list;
     }, [conversations, filter, searchQuery, userType]);
 
     const openCompose = () => {
-        if (userType === 'chef') {
-            router.push('/(tabs)/BookingsScreen');
-        } else {
-            router.push('/(tabs)/SearchScreen');
-        }
+        if (userType === 'chef') router.push('/(tabs)/BookingsScreen');
+        else router.push('/(tabs)/SearchScreen');
     };
 
     const renderConversation = ({ item }) => {
@@ -196,32 +171,15 @@ export default function Messages() {
             <Pressable
                 onPress={() => handleConversationPress(item)}
                 android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-                style={({ pressed }) => ({
-                    backgroundColor: pressed ? 'rgba(0,0,0,0.03)' : 'transparent',
-                })}
+                style={({ pressed }) => ({ backgroundColor: pressed ? 'rgba(0,0,0,0.03)' : 'transparent' })}
             >
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 16,
-                        paddingVertical: 14,
-                    }}
-                >
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
                     <View style={{ marginRight: 12 }}>
-                        <View
-                            style={{
-                                width: 52,
-                                height: 52,
-                                borderRadius: 26,
-                                overflow: 'hidden',
-                                borderWidth: 1,
-                                borderColor: borderSubtle,
-                                backgroundColor: bgColor,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                        >
+                        <View style={{
+                            width: 52, height: 52, borderRadius: 26, overflow: 'hidden',
+                            borderWidth: 1, borderColor: borderSubtle, backgroundColor: bgColor,
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
                             {url ? (
                                 <Image
                                     source={{ uri: url?.startsWith('data:') ? url : `${apiUrl}${url}` }}
@@ -234,29 +192,13 @@ export default function Messages() {
                             )}
                         </View>
                     </View>
-
                     <View style={{ flex: 1, minWidth: 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                             <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
-                                <Text
-                                    style={{
-                                        fontSize: 16,
-                                        fontWeight: hasUnread ? '700' : '600',
-                                        color: TEXT_PRIMARY,
-                                    }}
-                                    numberOfLines={1}
-                                >
+                                <Text style={{ fontSize: 16, fontWeight: hasUnread ? '700' : '600', color: TEXT_PRIMARY }} numberOfLines={1}>
                                     {otherUserName}
                                 </Text>
-                                <Text
-                                    style={{
-                                        marginTop: 4,
-                                        fontSize: 14,
-                                        color: hasUnread ? TEXT_SECONDARY : mutedText,
-                                        fontWeight: hasUnread ? '600' : '400',
-                                    }}
-                                    numberOfLines={1}
-                                >
+                                <Text style={{ marginTop: 4, fontSize: 14, color: hasUnread ? TEXT_SECONDARY : mutedText, fontWeight: hasUnread ? '600' : '400' }} numberOfLines={1}>
                                     {getMessagePreview(item)}
                                 </Text>
                             </View>
@@ -265,18 +207,7 @@ export default function Messages() {
                                     {formatListTimestamp(item.last_message_at)}
                                 </Text>
                                 {hasUnread ? (
-                                    <View
-                                        style={{
-                                            marginTop: 6,
-                                            minWidth: 22,
-                                            height: 22,
-                                            paddingHorizontal: 7,
-                                            borderRadius: 11,
-                                            backgroundColor: '#dc2626',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                        }}
-                                    >
+                                    <View style={{ marginTop: 6, minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: 11, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' }}>
                                         <Text style={{ color: '#ffffff', fontSize: 11, fontWeight: '700' }}>
                                             {item.unread_count > 9 ? '9+' : item.unread_count}
                                         </Text>
@@ -307,13 +238,8 @@ export default function Messages() {
                 <Stack.Screen options={{ headerShown: false }} />
                 <View style={{ flex: 1, backgroundColor: CREAM_BG, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
                     <Octicons name="alert" size={48} color={GREEN} />
-                    <Text style={{ color: TEXT_PRIMARY, fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
-                        {error}
-                    </Text>
-                    <TouchableOpacity
-                        onPress={fetchConversations}
-                        style={{ backgroundColor: GREEN, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}
-                    >
+                    <Text style={{ color: TEXT_PRIMARY, fontSize: 18, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>{error}</Text>
+                    <TouchableOpacity onPress={fetchConversations} style={{ backgroundColor: GREEN, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}>
                         <Text style={{ color: '#fff', fontWeight: '600' }}>Try Again</Text>
                     </TouchableOpacity>
                 </View>
@@ -328,47 +254,23 @@ export default function Messages() {
         <View style={{ flex: 1, backgroundColor: pageBg }}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <View style={{ paddingTop: insets.top, paddingHorizontal: 20 }}>
+            {/* ✅ FIX: removed insets.top — SafeAreaView in _layout.js already handles it */}
+            <View style={{ paddingTop: 8, paddingHorizontal: 20 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <Text
-                        style={{
-                            fontSize: 28,
-                            fontWeight: '800',
-                            color: TEXT_PRIMARY,
-                            letterSpacing: -0.5,
-                        }}
-                    >
+                    <Text style={{ fontSize: 28, fontWeight: '800', color: TEXT_PRIMARY, letterSpacing: -0.5 }}>
                         Messages
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                         <TouchableOpacity
                             onPress={() => searchRef.current?.focus()}
-                            style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: CARD_BG,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderWidth: 1,
-                                borderColor: borderSubtle,
-                            }}
+                            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: CARD_BG, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: borderSubtle }}
                             accessibilityLabel="Focus search"
                         >
                             <Octicons name="search" size={20} color={iconMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={openCompose}
-                            style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: CARD_BG,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                borderWidth: 1,
-                                borderColor: borderSubtle,
-                            }}
+                            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: CARD_BG, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: borderSubtle }}
                             accessibilityLabel="New message"
                         >
                             <Octicons name="comment" size={20} color={iconMuted} />
@@ -376,19 +278,11 @@ export default function Messages() {
                     </View>
                 </View>
 
-                <View
-                    style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        borderRadius: 999,
-                        borderWidth: 1,
-                        borderColor: BORDER,
-                        backgroundColor: cardBg,
-                        paddingHorizontal: 14,
-                        paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-                        marginBottom: 14,
-                    }}
-                >
+                <View style={{
+                    flexDirection: 'row', alignItems: 'center', borderRadius: 999,
+                    borderWidth: 1, borderColor: BORDER, backgroundColor: cardBg,
+                    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 10 : 4, marginBottom: 14,
+                }}>
                     <Octicons name="search" size={18} color={mutedText} style={{ marginRight: 8 }} />
                     <TextInput
                         ref={searchRef}
@@ -396,20 +290,11 @@ export default function Messages() {
                         onChangeText={setSearchQuery}
                         placeholder="Search messages..."
                         placeholderTextColor={mutedText}
-                        style={{
-                            flex: 1,
-                            fontSize: 16,
-                            color: TEXT_PRIMARY,
-                            paddingVertical: Platform.OS === 'android' ? 8 : 0,
-                        }}
+                        style={{ flex: 1, fontSize: 16, color: TEXT_PRIMARY, paddingVertical: Platform.OS === 'android' ? 8 : 0 }}
                     />
                 </View>
 
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 8, paddingBottom: 16 }}
-                >
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 16 }}>
                     {FILTER_TABS.map((tab) => {
                         const active = filter === tab;
                         return (
@@ -418,21 +303,12 @@ export default function Messages() {
                                 onPress={() => setFilter(tab)}
                                 android_ripple={{ color: 'rgba(0,0,0,0.08)' }}
                                 style={{
-                                    paddingHorizontal: 18,
-                                    paddingVertical: 8,
-                                    borderRadius: 999,
-                                    borderWidth: 1.5,
-                                    borderColor: active ? GREEN : '#dde8dd',
+                                    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 999,
+                                    borderWidth: 1.5, borderColor: active ? GREEN : '#dde8dd',
                                     backgroundColor: active ? GREEN : CARD_BG,
                                 }}
                             >
-                                <Text
-                                    style={{
-                                        fontSize: 14,
-                                        fontWeight: '600',
-                                        color: active ? '#ffffff' : GREEN_MUTED,
-                                    }}
-                                >
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: active ? '#ffffff' : GREEN_MUTED }}>
                                     {tab}
                                 </Text>
                             </Pressable>
@@ -444,44 +320,25 @@ export default function Messages() {
             {listEmpty ? (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
                     <Octicons name="comment-discussion" size={64} color={GREEN} />
-                    <Text style={{ color: TEXT_PRIMARY, fontSize: 20, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>
-                        No messages yet
-                    </Text>
-                    <Text style={{ color: TEXT_MUTED, textAlign: 'center', marginTop: 8, fontSize: 15 }}>
-                        Book a chef to start chatting
-                    </Text>
+                    <Text style={{ color: TEXT_PRIMARY, fontSize: 20, fontWeight: '600', marginTop: 16, textAlign: 'center' }}>No messages yet</Text>
+                    <Text style={{ color: TEXT_MUTED, textAlign: 'center', marginTop: 8, fontSize: 15 }}>Book a chef to start chatting</Text>
                 </View>
             ) : (
-                <View
-                    style={{
-                        flex: 1,
-                        marginHorizontal: 20,
-                        marginBottom: Math.max(insets.bottom, 12),
-                        borderRadius: 20,
-                        backgroundColor: cardBg,
-                        borderWidth: 1,
-                        borderColor: borderSubtle,
-                        overflow: 'hidden',
-                        ...Platform.select({
-                            ios: {
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.06,
-                                shadowRadius: 12,
-                            },
-                            android: { elevation: 3 },
-                        }),
-                    }}
-                >
+                <View style={{
+                    flex: 1, marginHorizontal: 20,
+                    marginBottom: Math.max(insets.bottom, 12),
+                    borderRadius: 20, backgroundColor: cardBg,
+                    borderWidth: 1, borderColor: borderSubtle, overflow: 'hidden',
+                    ...Platform.select({
+                        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 12 },
+                        android: { elevation: 3 },
+                    }),
+                }}>
                     {filteredEmpty ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
                             <Octicons name="filter" size={40} color={mutedText} />
-                            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '600', color: TEXT_SECONDARY }}>
-                                No conversations match
-                            </Text>
-                            <Text style={{ marginTop: 4, fontSize: 14, color: mutedText, textAlign: 'center' }}>
-                                Try another filter or search term
-                            </Text>
+                            <Text style={{ marginTop: 12, fontSize: 16, fontWeight: '600', color: TEXT_SECONDARY }}>No conversations match</Text>
+                            <Text style={{ marginTop: 4, fontSize: 14, color: mutedText, textAlign: 'center' }}>Try another filter or search term</Text>
                         </View>
                     ) : (
                         <FlatList
@@ -491,13 +348,7 @@ export default function Messages() {
                             ItemSeparatorComponent={() => (
                                 <View style={{ height: 1, backgroundColor: borderSubtle, marginLeft: 80 }} />
                             )}
-                            refreshControl={
-                                <RefreshControl
-                                    refreshing={refreshing}
-                                    onRefresh={onRefresh}
-                                    tintColor={GREEN}
-                                />
-                            }
+                            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GREEN} />}
                             contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }}
                             keyboardShouldPersistTaps="handled"
                         />

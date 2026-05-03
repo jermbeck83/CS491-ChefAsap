@@ -120,7 +120,7 @@ export default function ChatScreen() {
     return (
         <>
             <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: BG } }} />
-            <View style={[s.screen, { paddingTop: insets.top }]}>
+            <View style={s.screen}>
                 {/* Header */}
                 <View style={s.header}>
                     <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
