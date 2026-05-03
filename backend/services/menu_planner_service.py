@@ -346,6 +346,215 @@ def continue_conversation(
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Conversational chat (bootstraps a new conversation on first turn)
+# ---------------------------------------------------------------------------
+
+def _lookup_customer_location(conn, customer_id: int) -> tuple[float | None, float | None]:
+    """Return (lat, lon) from the customer's default saved address, or (None, None)."""
+    cursor = get_cursor(conn, dictionary=True)
+    try:
+        cursor.execute(
+            """
+            SELECT latitude, longitude FROM customer_addresses
+            WHERE customer_id = %s AND is_default = TRUE
+            LIMIT 1
+            """,
+            (customer_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None, None
+        lat = row["latitude"]
+        lon = row["longitude"]
+        return (
+            float(lat) if lat is not None else None,
+            float(lon) if lon is not None else None,
+        )
+    finally:
+        cursor.close()
+
+
+def _to_ui_response(plan: dict, candidate_chefs: list[dict]) -> tuple[dict | None, str | None]:
+    """
+    Map the LLM's plan schema (system_prompt.py SECTION 2) onto the shape
+    PlanCard.js / ChefSuggestionCard.js expect, and produce a short intro line.
+    Returns (ui_plan_or_None, content_text_or_None).
+    """
+    if not isinstance(plan, dict) or plan.get("_parse_error"):
+        # Surface the raw text so the user sees something rather than an empty bubble.
+        raw = plan.get("raw_response") if isinstance(plan, dict) else None
+        return None, raw or "I had trouble formatting that plan. Could you try rephrasing?"
+
+    event_summary = plan.get("event_summary") or {}
+    cuisine = (event_summary.get("cuisine") or "").strip()
+
+    if cuisine == "REQUEST_NOT_CULINARY":
+        return None, (
+            "I can only help with culinary event planning. Tell me about your event — "
+            "cuisine, guest count, and any dietary needs — and I'll suggest a menu."
+        )
+
+    # Group flat menu items by course → [{ course, dishes: [...] }]
+    menu_by_course: dict[str, list[dict]] = {}
+    course_order: list[str] = []
+    for item in (plan.get("menu") or []):
+        course = (item.get("course") or "main").strip().lower()
+        if course not in menu_by_course:
+            menu_by_course[course] = []
+            course_order.append(course)
+        menu_by_course[course].append({
+            "name": item.get("dish") or item.get("name") or "",
+            "description": item.get("rationale") or "",
+        })
+    menu = [{"course": c.capitalize(), "dishes": menu_by_course[c]} for c in course_order]
+
+    # Ingredients: { item, quantity, unit } → { name, quantity }
+    ingredients = []
+    for ing in (plan.get("ingredients") or []):
+        qty = ing.get("quantity")
+        unit = ing.get("unit")
+        if qty and unit:
+            qty_str = f"{qty} {unit}"
+        else:
+            qty_str = qty or unit or ""
+        ingredients.append({
+            "name": ing.get("item") or ing.get("name") or "",
+            "quantity": qty_str,
+        })
+
+    ce = plan.get("cost_estimate") or {}
+    estimated_cost = {
+        "total": ce.get("total_usd") if ce.get("total_usd") is not None else ce.get("total"),
+        "per_person": ce.get("per_person_usd") if ce.get("per_person_usd") is not None else ce.get("per_person"),
+        "breakdown": ce.get("breakdown"),
+    }
+
+    # Enrich the LLM's chef IDs with profile data so ChefSuggestionCard can render.
+    chef_lookup = {c["chef_id"]: c for c in candidate_chefs}
+    chefs_ui = []
+    for rec in (plan.get("recommended_chefs") or []):
+        cid = rec.get("chef_id")
+        base = chef_lookup.get(cid, {})
+        full_name = base.get("full_name") or ""
+        first, _, last = full_name.partition(" ")
+        cuisines_str = base.get("cuisines") or ""
+        chefs_ui.append({
+            "chef_id": cid,
+            "first_name": first or None,
+            "last_name": last or None,
+            "full_name": full_name or None,
+            "rating": base.get("average_rating"),
+            "cuisines": [c.strip() for c in cuisines_str.split(",") if c.strip()],
+            "distance_miles": base.get("distance_miles"),
+            "match_reason": rec.get("match_reason"),
+        })
+
+    ui_plan = {
+        "menu": menu,
+        "ingredients": ingredients,
+        "estimated_cost": estimated_cost,
+        "chefs": chefs_ui,
+        "notes": plan.get("notes") or None,
+    }
+
+    # Short intro line shown above the PlanCard.
+    guests = event_summary.get("guest_count")
+    dietary = event_summary.get("dietary_notes") or []
+    intro_parts = ["Here's your event plan"]
+    desc_bits = []
+    if cuisine:
+        desc_bits.append(cuisine)
+    if guests:
+        desc_bits.append(f"for {guests} guests")
+    if desc_bits:
+        intro_parts.append("— " + " ".join(desc_bits))
+    if dietary:
+        intro_parts.append(f"({', '.join(dietary)})")
+    content = " ".join(intro_parts) + ":"
+
+    return ui_plan, content
+
+
+def chat_turn(
+    customer_id: int,
+    conversation_id: str | None,
+    user_message: str,
+    latitude: float | None = None,
+    longitude: float | None = None,
+) -> dict:
+    """
+    Conversational planner entry point. Bootstraps a new conversation when
+    conversation_id is None. Returns a frontend-shaped response:
+        { conversation_id, role, content, plan }
+    """
+    is_new = not conversation_id
+    if is_new:
+        conversation_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        # Fall back to the customer's saved default address when the client
+        # didn't include coordinates with the message.
+        if latitude is None or longitude is None:
+            db_lat, db_lon = _lookup_customer_location(conn, customer_id)
+            latitude = latitude if latitude is not None else db_lat
+            longitude = longitude if longitude is not None else db_lon
+
+        # Fetch nearby chefs without a cuisine filter — the LLM picks fits from
+        # the candidate set based on the user's free-text request.
+        if latitude is not None and longitude is not None:
+            chefs = _fetch_candidate_chefs(conn, latitude, longitude, cuisine="")
+        else:
+            chefs = []
+        pricing_ctx = _build_pricing_context(chefs, "", "", 1)
+
+        history = [] if is_new else _load_messages(conn, conversation_id)
+
+        # Attach grounding context to the latest user turn only — keeps history
+        # compact and lets the cached system prompt do the schema work.
+        augmented_user = (
+            f"<user_message>\n{user_message}\n</user_message>\n\n"
+            f"<available_chefs>\n{json.dumps(chefs, indent=2, default=str)}\n</available_chefs>\n\n"
+            f"<pricing_context>\n{json.dumps(pricing_ctx, indent=2, default=str)}\n</pricing_context>"
+        )
+        messages = history + [{"role": "user", "content": augmented_user}]
+
+        plan, usage = call_llm(messages, model=DEFAULT_MODEL if is_new else FAST_MODEL)
+
+        if isinstance(plan, dict) and not plan.get("_parse_error"):
+            plan = _rerank_with_ml(plan, latitude or 0.0, longitude or 0.0)
+
+        # Persist the raw user message and the model's JSON response.
+        _persist_message(conn, conversation_id, "user", user_message)
+        _persist_message(conn, conversation_id, "assistant", json.dumps(plan))
+
+        # Persist the plan record on the first turn so it can later be booked.
+        if is_new and isinstance(plan, dict) and not plan.get("_parse_error"):
+            try:
+                summary = plan.get("event_summary") or {}
+                _persist_plan(
+                    conn, customer_id, conversation_id,
+                    str(summary.get("event_date") or ""),
+                    str(summary.get("cuisine") or ""),
+                    int(summary.get("guest_count") or 0),
+                    plan, usage,
+                )
+            except Exception as e:
+                print(f"[menu_planner] persist plan warning: {e}")
+
+        ui_plan, content = _to_ui_response(plan, chefs)
+
+        return {
+            "conversation_id": conversation_id,
+            "role": "assistant",
+            "content": content,
+            "plan": ui_plan,
+        }
+    finally:
+        conn.close()
+
+
 def get_plan(plan_id: int) -> dict | None:
     """Fetch a saved plan by ID."""
     conn = get_db_connection()
