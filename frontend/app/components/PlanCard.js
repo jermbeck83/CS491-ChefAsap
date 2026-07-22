@@ -97,9 +97,9 @@ export default function PlanCard({ plan, conversationId }) {
 
     const { menu = [], ingredients = [], estimated_cost, chefs = [], notes } = plan;
 
-    const totalCost = estimated_cost?.total
-        ?? estimated_cost?.amount
-        ?? estimated_cost;
+    const totalCost = typeof estimated_cost === 'number'
+        ? estimated_cost
+        : (estimated_cost?.total ?? estimated_cost?.amount);
 
     const handleShare = async () => {
         try {
